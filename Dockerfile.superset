@@ -17,21 +17,29 @@ RUN apt-get update && \
 # pip 업그레이드 (root 권한으로)
 RUN pip install --upgrade pip
 
-# MySQL 드라이버들 설치 (root 권한으로)
+# MySQL 드라이버들 및 CORS 관련 패키지 설치
 RUN pip install --no-cache-dir PyMySQL==1.1.1
 RUN pip install --no-cache-dir mysql-connector-python
 RUN pip install --no-cache-dir mysqlclient || echo "mysqlclient installation failed, continuing with PyMySQL only"
+RUN pip install --no-cache-dir flask-cors
 
 # 설치된 드라이버 확인
 RUN python -c "import pymysql; print('PyMySQL: OK')" && \
     (python -c "import MySQLdb; print('MySQLdb: OK')" || echo "MySQLdb: Not available") && \
     python -c "import mysql.connector; print('MySQL Connector: OK')"
 
+# Superset 설정 파일 복사
+COPY superset_config.py /app/pythonpath/superset_config.py
+
 # superset 사용자로 전환
 USER superset
 
 # 작업 디렉토리 설정
 WORKDIR /app
+
+# 환경 변수 설정
+ENV SUPERSET_CONFIG_PATH=/app/pythonpath/superset_config.py
+ENV PYTHONPATH="/app/pythonpath:$PYTHONPATH"
 
 # 기본 포트 노출
 EXPOSE 8088

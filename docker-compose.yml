@@ -1,4 +1,4 @@
-# docker-compose.yml (포트 변경)
+# docker-compose.yml
 
 services:
   # MariaDB 데이터베이스
@@ -46,17 +46,22 @@ services:
       redis:
         condition: service_started
     environment:
-      SUPERSET_SECRET_KEY: 'your-secret-key-change-this-in-production-12345'
+      - SUPERSET_SECRET_KEY=your-secret-key-change-this-in-production-12345
+      - SUPERSET_CONFIG_PATH=/app/pythonpath/superset_config.py
+      - PYTHONPATH=/app/pythonpath
+      - FLASK_APP=superset
+      - SUPERSET_ENV=development
     ports:
       - "8088:8088"
     volumes:
       - superset_data:/app/superset_home
+      - ./superset_config.py:/app/pythonpath/superset_config.py:ro
     networks:
       - superset_network
     restart: unless-stopped
     command: >
       bash -c "
-        echo 'Starting Superset with pre-installed MySQL drivers...' &&
+        echo 'Starting Superset with CORS enabled...' &&
         sleep 25 &&
         superset db upgrade &&
         (superset fab create-admin --username admin --firstname Admin --lastname User --email admin@superset.com --password admin || echo 'Admin exists') &&
@@ -64,14 +69,14 @@ services:
         superset run -h 0.0.0.0 -p 8088 --with-threads --reload
       "   
 
-  # React Frontend (포트 3001로 변경)
+  # React Frontend
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: react_frontend
     ports:
-      - "3001:3000"  # 호스트 포트를 3001로 변경
+      - "3001:3000"
     volumes:
       - ./frontend:/app
       - /app/node_modules

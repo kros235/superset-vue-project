@@ -12,13 +12,38 @@ class AuthService {
     try {
       const result = await supersetAPI.login(username, password);
       
-      // 로그인 성공 후 사용자 정보 가져오기
-      await this.loadUserInfo();
+      // 로그인 성공 후 간소화된 사용자 정보 설정
+      if (result) {
+        // 임시 사용자 정보 설정 (API 호출 없이)
+        this.currentUser = {
+          id: 1,
+          username: username,
+          first_name: username === 'admin' ? 'Admin' : 'User',
+          last_name: 'User',
+          email: `${username}@example.com`,
+          roles: username === 'admin' ? [{ id: 1, name: 'Admin' }] : [{ id: 2, name: 'Public' }]
+        };
+        
+        // 기본 역할 설정
+        if (username === 'admin') {
+          this.userRoles = [{ id: 1, name: 'Admin' }];
+        } else {
+          this.userRoles = [{ id: 2, name: 'Public' }];
+        }
+        
+        // 기본 권한 설정
+        this.permissions = [];
+        
+        return {
+          success: true,
+          user: this.currentUser,
+          message: '로그인 성공'
+        };
+      }
       
       return {
-        success: true,
-        user: this.currentUser,
-        message: '로그인 성공'
+        success: false,
+        message: '로그인에 실패했습니다.'
       };
     } catch (error) {
       console.error('Login failed:', error);
@@ -31,15 +56,19 @@ class AuthService {
 
   async loadUserInfo() {
     try {
-      // 현재 사용자 정보 가져오기
+      // CORS 문제로 인해 일시적으로 API 호출 비활성화
+      console.log('사용자 정보 로딩 건너뜀 (CORS 문제 해결 중)');
+      
+      // 나중에 CORS 문제 해결 후 활성화할 코드
+      /*
       const users = await supersetAPI.getUsers();
       const roles = await supersetAPI.getRoles();
       const permissions = await supersetAPI.getPermissions();
       
-      // 현재 로그인한 사용자 찾기 (임시로 첫 번째 사용자)
       this.currentUser = users[0];
       this.userRoles = roles;
       this.permissions = permissions;
+      */
       
     } catch (error) {
       console.error('Failed to load user info:', error);
@@ -80,13 +109,9 @@ class AuthService {
 
   // 데이터 접근 권한 체크
   canAccessDataSource(dataSourceId) {
-    // 관리자는 모든 데이터 소스 접근 가능
     if (this.isAdmin()) {
       return true;
     }
-    
-    // 특정 역할에 따른 접근 권한 로직
-    // 실제 구현에서는 데이터 소스별 권한 매핑이 필요
     return this.hasRole('Alpha') || this.hasRole('Gamma');
   }
 
@@ -110,8 +135,6 @@ class AuthService {
     if (this.isAdmin()) {
       return true;
     }
-    
-    // 차트 소유자이거나 Alpha 역할인 경우
     return this.currentUser?.id === chartOwnerId || this.hasRole('Alpha');
   }
 
@@ -120,8 +143,6 @@ class AuthService {
     if (this.isAdmin()) {
       return true;
     }
-    
-    // 대시보드 소유자이거나 Alpha 역할인 경우
     return this.currentUser?.id === dashboardOwnerId || this.hasRole('Alpha');
   }
 
