@@ -18,6 +18,9 @@ class SupersetAPI {
       }
     });
 
+    // 생성자에서 저장된 토큰 로드
+    this.loadStoredTokens();
+
     // 요청 인터셉터
     this.api.interceptors.request.use(
       (config) => {
@@ -50,6 +53,38 @@ class SupersetAPI {
     );
   }
 
+  // 토큰 저장/로드 메서드
+  loadStoredTokens() {
+    this.token = localStorage.getItem('superset_auth_token');
+    this.refreshToken = localStorage.getItem('superset_refresh_token');
+    this.csrfToken = localStorage.getItem('superset_csrf_token');
+  }
+
+  setTokens(accessToken, refreshToken = null, csrfToken = null) {
+    this.token = accessToken;
+    if (refreshToken) {
+      this.refreshToken = refreshToken;
+    }
+    if (csrfToken) {
+      this.csrfToken = csrfToken;
+    }
+
+    // localStorage에 저장
+    if (accessToken) {
+      localStorage.setItem('superset_auth_token', accessToken);
+    } else {
+      localStorage.removeItem('superset_auth_token');
+    }
+    
+    if (refreshToken) {
+      localStorage.setItem('superset_refresh_token', refreshToken);
+    }
+    
+    if (csrfToken) {
+      localStorage.setItem('superset_csrf_token', csrfToken);
+    }
+  }
+
   // 1. 인증 관련
   async login(username, password) {
     try {
@@ -60,12 +95,16 @@ class SupersetAPI {
         refresh: true
       });
       
-      this.token = response.data.access_token;
-      this.refreshToken = response.data.refresh_token;
+      // 토큰들 저장
+      this.setTokens(
+        response.data.access_token,
+        response.data.refresh_token
+      );
       
       // CSRF 토큰 가져오기
       await this.getCSRFToken();
       
+      console.log('Login successful, tokens saved');
       return response.data;
     } catch (error) {
       console.error('Login error:', error);
@@ -76,7 +115,7 @@ class SupersetAPI {
   async getCSRFToken() {
     try {
       const response = await this.api.get('/api/v1/security/csrf_token/');
-      this.csrfToken = response.data.result;
+      this.setTokens(this.token, this.refreshToken, response.data.result);
       return this.csrfToken;
     } catch (error) {
       console.error('CSRF token error:', error);
@@ -88,7 +127,7 @@ class SupersetAPI {
     const response = await this.api.post('/api/v1/security/refresh', {
       refresh_token: this.refreshToken
     });
-    this.token = response.data.access_token;
+    this.setTokens(response.data.access_token, this.refreshToken, this.csrfToken);
     return this.token;
   }
 
@@ -96,6 +135,9 @@ class SupersetAPI {
     this.token = null;
     this.refreshToken = null;
     this.csrfToken = null;
+    localStorage.removeItem('superset_auth_token');
+    localStorage.removeItem('superset_refresh_token');
+    localStorage.removeItem('superset_csrf_token');
   }
 
   // 2. 데이터베이스 관련
@@ -111,11 +153,28 @@ class SupersetAPI {
 
   async testDatabaseConnection(payload) {
     try {
-      const response = await this.api.post('/api/v1/database/test_connection', payload);
-      return response.data;
+      console.log('Testing connection with payload:', payload);
+      console.log('Using token:', this.token ? 'Token present' : 'No token');
+      
+      // URL 끝에 슬래시 추가하여 리다이렉트 방지
+      const response = await this.api.post('/api/v1/database/test_connection/', payload);
+      
+      console.log('Connection test response:', response.data);
+      
+      // 응답 처리 개선
+      if (response.data.message === 'OK' || response.status === 200) {
+        return { success: true, message: 'Connection successful' };
+      } else {
+        return { success: false, message: response.data.message || 'Connection failed' };
+      }
     } catch (error) {
       console.error('Test connection error:', error);
-      throw error;
+      console.error('Error response:', error.response?.data);
+      
+      return { 
+        success: false, 
+        message: error.response?.data?.message || error.message || 'Connection failed' 
+      };
     }
   }
 
