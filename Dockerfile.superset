@@ -3,6 +3,8 @@ FROM apache/superset:latest
 
 # Root 권한으로 시스템 패키지 설치
 USER root
+
+# 시스템 패키지 업데이트 및 MySQL 관련 패키지 설치
 RUN apt-get update && \
     apt-get install -y \
     default-mysql-client \
@@ -12,25 +14,24 @@ RUN apt-get update && \
     python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Superset 사용자로 전환하여 Python 패키지 설치
-USER superset
-
-# pip 업그레이드
+# pip 업그레이드 (root 권한으로)
 RUN pip install --upgrade pip
 
-# PyMySQL만 설치 (가장 안전한 옵션)
+# MySQL 드라이버들 설치 (root 권한으로)
 RUN pip install --no-cache-dir PyMySQL==1.1.1
-
-# mysqlclient 설치 시도 (실패하면 무시)
-RUN pip install --no-cache-dir mysqlclient || echo "mysqlclient installation failed, continuing with PyMySQL only"
-
-# mysql-connector-python 설치
 RUN pip install --no-cache-dir mysql-connector-python
+RUN pip install --no-cache-dir mysqlclient || echo "mysqlclient installation failed, continuing with PyMySQL only"
 
 # 설치된 드라이버 확인
 RUN python -c "import pymysql; print('PyMySQL: OK')" && \
     (python -c "import MySQLdb; print('MySQLdb: OK')" || echo "MySQLdb: Not available") && \
     python -c "import mysql.connector; print('MySQL Connector: OK')"
 
+# superset 사용자로 전환
+USER superset
+
+# 작업 디렉토리 설정
 WORKDIR /app
+
+# 기본 포트 노출
 EXPOSE 8088
