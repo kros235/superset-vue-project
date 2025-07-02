@@ -1,0 +1,36 @@
+# Dockerfile.superset
+FROM apache/superset:latest
+
+# Root 권한으로 시스템 패키지 설치
+USER root
+RUN apt-get update && \
+    apt-get install -y \
+    default-mysql-client \
+    default-libmysqlclient-dev \
+    build-essential \
+    pkg-config \
+    python3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Superset 사용자로 전환하여 Python 패키지 설치
+USER superset
+
+# pip 업그레이드
+RUN pip install --upgrade pip
+
+# PyMySQL만 설치 (가장 안전한 옵션)
+RUN pip install --no-cache-dir PyMySQL==1.1.1
+
+# mysqlclient 설치 시도 (실패하면 무시)
+RUN pip install --no-cache-dir mysqlclient || echo "mysqlclient installation failed, continuing with PyMySQL only"
+
+# mysql-connector-python 설치
+RUN pip install --no-cache-dir mysql-connector-python
+
+# 설치된 드라이버 확인
+RUN python -c "import pymysql; print('PyMySQL: OK')" && \
+    (python -c "import MySQLdb; print('MySQLdb: OK')" || echo "MySQLdb: Not available") && \
+    python -c "import mysql.connector; print('MySQL Connector: OK')"
+
+WORKDIR /app
+EXPOSE 8088

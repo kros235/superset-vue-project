@@ -1,0 +1,94 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  # MariaDB 데이터베이스
+  mariadb:
+    image: mariadb:10.6
+    container_name: superset_mariadb
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: sample_dashboard
+      MYSQL_USER: superset
+      MYSQL_PASSWORD: superset123
+    ports:
+      - "3306:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - ./database/init:/docker-entrypoint-initdb.d
+    networks:
+      - superset_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis (Superset 캐싱용)
+  redis:
+    image: redis:7-alpine
+    container_name: superset_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - superset_network
+    restart: unless-stopped
+
+   # Apache Superset (커스텀 이미지)
+  superset:
+    build:
+      context: .
+      dockerfile: Dockerfile.superset
+    container_name: superset_app
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      SUPERSET_SECRET_KEY: 'your-secret-key-change-this-in-production-12345'
+    ports:
+      - "8088:8088"
+    volumes:
+      - superset_data:/app/superset_home
+    networks:
+      - superset_network
+    restart: unless-stopped
+    command: >
+      bash -c "
+        echo 'Starting Superset with pre-installed MySQL drivers...' &&
+        sleep 25 &&
+        superset db upgrade &&
+        (superset fab create-admin --username admin --firstname Admin --lastname User --email admin@superset.com --password admin || echo 'Admin exists') &&
+        superset init &&
+        superset run -h 0.0.0.0 -p 8088 --with-threads --reload
+      "   
+
+  # React Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: react_frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+      - REACT_APP_SUPERSET_URL=http://localhost:8088
+    networks:
+      - superset_network
+    restart: unless-stopped
+    depends_on:
+      - superset
+
+volumes:
+  mariadb_data:
+  superset_data:
+
+networks:
+  superset_network:
+    driver: bridge
