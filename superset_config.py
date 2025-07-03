@@ -1,61 +1,84 @@
-# superset_config.py
+# superset_config.py (네트워크 접근 허용)
 import os
-from flask import request, make_response, jsonify
+from flask import request
 from flask_cors import CORS
 
+# Flask 앱 뮤테이터 함수
 def FLASK_APP_MUTATOR(app):
-    """Flask 앱에 CORS 설정 추가"""
+    """Flask 앱에 CORS 설정 추가 (네트워크 접근 허용)"""
     
-    # CORS 설정 - 중복 방지를 위해 단순화
+    # 네트워크 환경을 위한 CORS 설정
     CORS(app, 
-         origins=['http://localhost:3001', 'http://localhost:3000', 'http://127.0.0.1:3001', 'http://127.0.0.1:3000'],
+         origins=[
+             'http://localhost:3001',
+             'http://localhost:3000',
+             'http://127.0.0.1:3001',
+             'http://127.0.0.1:3000',
+             # 실제 IP 주소들 (여러 네트워크 대역 허용)
+             'http://192.168.*:3001',
+             'http://192.168.*:3000',
+             'http://10.*:3001',
+             'http://10.*:3000',
+             'http://172.*:3001',
+             'http://172.*:3000'
+         ],
+         origin_regex=[
+             r"http://192\.168\.\d+\.\d+:300[01]",
+             r"http://10\.\d+\.\d+\.\d+:300[01]",
+             r"http://172\.\d+\.\d+\.\d+:300[01]"
+         ],
          methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-         allow_headers=['Content-Type', 'Authorization', 'X-CSRFToken', 'X-Requested-With', 'Accept', 'Origin'],
-         expose_headers=['Content-Type', 'Authorization', 'X-CSRFToken'],
+         allow_headers=[
+             'Content-Type',
+             'Authorization',
+             'X-CSRFToken',
+             'X-Requested-With',
+             'Accept',
+             'Origin',
+             'Cache-Control',
+             'X-Request-ID'
+         ],
+         expose_headers=[
+             'Content-Type',
+             'Authorization',
+             'X-CSRFToken',
+             'Content-Length',
+             'X-Total-Count'
+         ],
          supports_credentials=True,
-         max_age=86400
+         max_age=86400  # 24시간 캐시
     )
     
-    # Preflight OPTIONS 요청만 처리 (헤더 중복 방지)
-    @app.before_request
-    def handle_preflight():
-        if request.method == "OPTIONS":
-            print(f"OPTIONS request from: {request.environ.get('HTTP_ORIGIN', 'unknown')}")
-            response = make_response()
-            # CORS가 이미 처리하므로 추가 헤더 설정하지 않음
-            return response
-
-    # after_request 제거 (CORS 라이브러리가 처리)
-    
-    # API 오류 처리
-    @app.errorhandler(401)
-    def handle_unauthorized(e):
-        if request.path.startswith('/api/'):
-            return jsonify({'error': 'Unauthorized', 'message': str(e)}), 401
-        return e
-
-    @app.errorhandler(404)
-    def handle_not_found(e):
-        if request.path.startswith('/api/'):
-            return jsonify({'error': 'Not Found', 'message': str(e)}), 404
-        return e
+    # 추가 헤더 설정
+    @app.after_request
+    def after_request(response):
+        origin = request.environ.get('HTTP_ORIGIN', '')
+        # 로컬 네트워크 IP 대역 허용
+        if (origin.startswith('http://localhost') or 
+            origin.startswith('http://127.0.0.1') or
+            origin.startswith('http://192.168.') or
+            origin.startswith('http://10.') or
+            origin.startswith('http://172.')):
+            response.headers['Access-Control-Allow-Origin'] = origin
+            response.headers['Access-Control-Allow-Credentials'] = 'true'
+            response.headers['Access-Control-Allow-Methods'] = 'GET,POST,PUT,DELETE,OPTIONS,PATCH'
+            response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,X-CSRFToken,X-Requested-With,Accept,Origin,Cache-Control'
+        return response
     
     return app
 
 # 기본 설정
 DEBUG = True
-LOG_LEVEL = 'DEBUG'
-
-# 보안 설정 완전 비활성화 (개발 환경만)
 WTF_CSRF_ENABLED = False
 TALISMAN_ENABLED = False
+
+# 보안 설정 완화 (개발 환경)
 SECRET_KEY = 'your-secret-key-change-this-in-production-12345'
 PREVENT_UNSAFE_DB_CONNECTIONS = False
 
-# 인증 설정
-AUTH_TYPE = 1  # DATABASE authentication
-AUTH_USER_REGISTRATION = True
-AUTH_USER_REGISTRATION_ROLE = "Alpha"
+# 네트워크 설정
+WEB_SERVER_ADDRESS = '0.0.0.0'
+WEB_SERVER_PORT = 8088
 
 # 세션 설정
 SESSION_COOKIE_SAMESITE = None
@@ -76,10 +99,16 @@ CACHE_CONFIG = {
 # Feature flags
 FEATURE_FLAGS = {
     'ENABLE_TEMPLATE_PROCESSING': True,
-    'DASHBOARD_NATIVE_FILTERS': True,
 }
 
 # API 설정
 SQLLAB_CTAS_NO_LIMIT = True
 SQLLAB_TIMEOUT = 300
 SUPERSET_WEBSERVER_TIMEOUT = 60
+
+# 로그 레벨
+LOG_LEVEL = 'INFO'
+
+# 사용자 등록 허용 (개발 환경)
+AUTH_USER_REGISTRATION = True
+AUTH_USER_REGISTRATION_ROLE = "Public"

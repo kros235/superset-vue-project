@@ -1,0 +1,23 @@
+# mariadb-custom.cnf
+[mysqld]
+# 모든 IP 주소에서의 연결 허용
+bind-address = 0.0.0.0
+
+# 네트워크 연결 허용
+skip-networking = 0
+
+# 연결 타임아웃 설정
+wait_timeout = 28800
+interactive_timeout = 28800
+net_read_timeout = 60
+net_write_timeout = 60
+
+# 최대 연결 수
+max_connections = 200
+
+# 문자셋 설정
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+
+[client]
+default-character-set = utf8mb4

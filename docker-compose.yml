@@ -1,4 +1,4 @@
-# docker-compose.yml
+version: '3.8'
 
 services:
   # MariaDB 데이터베이스
@@ -11,10 +11,11 @@ services:
       MYSQL_USER: superset
       MYSQL_PASSWORD: superset123
     ports:
-      - "3306:3306"
+      - "0.0.0.0:3306:3306"
     volumes:
       - mariadb_data:/var/lib/mysql
       - ./database/init:/docker-entrypoint-initdb.d
+      - ./mariadb-custom.cnf:/etc/mysql/conf.d/custom.cnf
     networks:
       - superset_network
     restart: unless-stopped
@@ -29,12 +30,12 @@ services:
     image: redis:7-alpine
     container_name: superset_redis
     ports:
-      - "6379:6379"
+      - "0.0.0.0:6379:6379"
     networks:
       - superset_network
     restart: unless-stopped
 
-   # Apache Superset (커스텀 이미지)
+  # Apache Superset (커스텀 이미지)
   superset:
     build:
       context: .
@@ -52,7 +53,7 @@ services:
       - FLASK_APP=superset
       - SUPERSET_ENV=development
     ports:
-      - "8088:8088"
+      - "0.0.0.0:8088:8088"
     volumes:
       - superset_data:/app/superset_home
       - ./superset_config.py:/app/pythonpath/superset_config.py:ro
@@ -61,13 +62,13 @@ services:
     restart: unless-stopped
     command: >
       bash -c "
-        echo 'Starting Superset with CORS enabled...' &&
+        echo 'Starting Superset with network access enabled...' &&
         sleep 25 &&
         superset db upgrade &&
         (superset fab create-admin --username admin --firstname Admin --lastname User --email admin@superset.com --password admin || echo 'Admin exists') &&
         superset init &&
         superset run -h 0.0.0.0 -p 8088 --with-threads --reload
-      "   
+      "
 
   # React Frontend
   frontend:
@@ -76,13 +77,14 @@ services:
       dockerfile: Dockerfile
     container_name: react_frontend
     ports:
-      - "3001:3000"
+      - "0.0.0.0:3001:3000"
     volumes:
       - ./frontend:/app
       - /app/node_modules
     environment:
       - CHOKIDAR_USEPOLLING=true
       - REACT_APP_SUPERSET_URL=http://localhost:8088
+      - HOST=0.0.0.0
     networks:
       - superset_network
     restart: unless-stopped
