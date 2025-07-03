@@ -41,34 +41,31 @@ services:
       context: .
       dockerfile: Dockerfile.superset
     container_name: superset_app
+    environment:
+      - SUPERSET_CONFIG_PATH=/app/superset_config.py
+      - SUPERSET_SECRET_KEY=your_secret_key_here_must_be_at_least_32_bytes_long_for_security
+      - SUPERSET_JWT_SECRET=super_secret_jwt_key_that_is_at_least_32_bytes_long_for_async_queries
+      - SQLALCHEMY_DATABASE_URI=mysql+pymysql://superset:superset123@mariadb:3306/sample_dashboard
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    ports:
+      - "0.0.0.0:8088:8088"
+    volumes:
+      - ./superset_config.py:/app/superset_config.py
+      - superset_data:/app/superset_home
+    networks:
+      - superset_network
     depends_on:
       mariadb:
         condition: service_healthy
       redis:
         condition: service_started
-    environment:
-      - SUPERSET_SECRET_KEY=your-secret-key-change-this-in-production-12345
-      - SUPERSET_CONFIG_PATH=/app/pythonpath/superset_config.py
-      - PYTHONPATH=/app/pythonpath
-      - FLASK_APP=superset
-      - SUPERSET_ENV=development
-    ports:
-      - "0.0.0.0:8088:8088"
-    volumes:
-      - superset_data:/app/superset_home
-      - ./superset_config.py:/app/pythonpath/superset_config.py:ro
-    networks:
-      - superset_network
     restart: unless-stopped
-    command: >
-      bash -c "
-        echo 'Starting Superset with network access enabled...' &&
-        sleep 25 &&
-        superset db upgrade &&
-        (superset fab create-admin --username admin --firstname Admin --lastname User --email admin@superset.com --password admin || echo 'Admin exists') &&
-        superset init &&
-        superset run -h 0.0.0.0 -p 8088 --with-threads --reload
-      "
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8088/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # React Frontend
   # frontend:
@@ -91,30 +88,34 @@ services:
   #  depends_on:
   #    - superset
 
-# Vue.js Frontend
+# Vue.js Frontend (React 대신)
   vue-frontend:
     build:
       context: ./vue-frontend
       dockerfile: Dockerfile
     container_name: vue_frontend
+    environment:
+      - VUE_APP_SUPERSET_URL=http://localhost:8088
+      - NODE_ENV=development
     ports:
-      - "0.0.0.0:3002:8080"
+      - "0.0.0.0:8080:8080"
     volumes:
       - ./vue-frontend:/app
       - /app/node_modules
-    environment:
-      - CHOKIDAR_USEPOLLING=true
-      - VUE_APP_SUPERSET_URL=http://localhost:8088
     networks:
       - superset_network
-    restart: unless-stopped
     depends_on:
       - superset
-
-volumes:
-  mariadb_data:
-  superset_data:
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
 
 networks:
   superset_network:
     driver: bridge
+
+volumes:
+  mariadb_data:
+    driver: local
+  superset_data:
+    driver: local

@@ -169,135 +169,88 @@ export default defineComponent({
       }
     }
 
-    const handleDatasetChange = async (datasetId) => {
-      const dataset = datasets.value.find(d => d.id === datasetId)
-      selectedDataset.value = dataset
-      chartConfig.value.datasource = `${datasetId}__table`
+    const handleDatasetSelect = async (datasetId) => {
+      selectedDataset.value = datasets.value.find(d => d.id === datasetId)
+      chartConfig.value.datasource = datasetId
       await loadDatasetColumns(datasetId)
+      if (currentStep.value === 0) {
+        currentStep.value = 1
+      }
     }
 
-    const handleChartTypeChange = (vizType) => {
+    const handleChartTypeSelect = (vizType) => {
       chartConfig.value.viz_type = vizType
-      chartConfig.value.params = getDefaultParams(vizType)
-    }
-
-    const getDefaultParams = (vizType) => {
-      const defaults = {
-        table: {
-          query_mode: 'aggregate',
-          groupby: [],
-          metrics: [],
-          all_columns: [],
-          row_limit: 1000
-        },
-        bar: {
-          query_mode: 'aggregate',
-          groupby: [],
-          metrics: [],
-          row_limit: 1000,
-          color_scheme: 'bnbColors'
-        },
-        line: {
-          query_mode: 'aggregate',
-          groupby: [],
-          metrics: [],
-          row_limit: 1000,
-          color_scheme: 'bnbColors'
-        },
-        pie: {
-          query_mode: 'aggregate',
-          groupby: [],
-          metrics: [],
-          row_limit: 1000,
-          color_scheme: 'bnbColors'
-        }
-      }
-      return defaults[vizType] || defaults.table
-    }
-
-    const updateChartParams = (key, value) => {
-      chartConfig.value.params = {
-        ...chartConfig.value.params,
-        [key]: value
+      if (currentStep.value === 1) {
+        currentStep.value = 2
       }
     }
 
-    const updateChartConfig = (key, value) => {
-      chartConfig.value[key] = value
+    const handleConfigChange = (config) => {
+      chartConfig.value.params = { ...chartConfig.value.params, ...config }
+      if (currentStep.value === 2) {
+        currentStep.value = 3
+      }
     }
 
-    const setCurrentStep = (step) => {
-      currentStep.value = step
+    const handleDetailsChange = (details) => {
+      chartConfig.value.slice_name = details.slice_name
+      chartConfig.value.description = details.description
+      if (currentStep.value === 3) {
+        currentStep.value = 4
+      }
     }
 
     const previewChart = async () => {
-      if (!selectedDataset.value || !chartConfig.value.viz_type) {
-        message.warning('데이터셋과 차트 타입을 선택해주세요.')
+      if (!canCreateChart.value) {
+        message.error('차트 생성 권한이 없습니다.')
         return
       }
 
       previewLoading.value = true
       try {
-        const payload = {
-          datasource: chartConfig.value.datasource,
+        const data = await supersetAPI.getChartData(null, {
+          datasource_id: chartConfig.value.datasource,
           viz_type: chartConfig.value.viz_type,
-          form_data: chartConfig.value.params
-        }
-
-        const result = await supersetAPI.getChartData(payload)
-        chartData.value = result
-        message.success('차트 미리보기가 생성되었습니다.')
+          ...chartConfig.value.params
+        })
+        chartData.value = data
       } catch (error) {
         console.error('차트 미리보기 오류:', error)
-        message.error('차트 미리보기 생성 중 오류가 발생했습니다.')
+        message.error('차트 미리보기를 불러오는 중 오류가 발생했습니다.')
       } finally {
         previewLoading.value = false
       }
     }
 
     const saveChart = async () => {
-      if (!chartConfig.value.slice_name) {
-        message.warning('차트 이름을 입력해주세요.')
+      if (!canCreateChart.value) {
+        message.error('차트 생성 권한이 없습니다.')
         return
       }
 
       try {
-        const payload = {
-          slice_name: chartConfig.value.slice_name,
-          description: chartConfig.value.description,
-          viz_type: chartConfig.value.viz_type,
-          datasource_id: selectedDataset.value.id,
-          datasource_type: 'table',
-          params: JSON.stringify(chartConfig.value.params)
-        }
-
-        await supersetAPI.createChart(payload)
-        message.success('차트가 성공적으로 저장되었습니다.')
-        resetForm()
+        await supersetAPI.createChart(chartConfig.value)
+        message.success('차트가 성공적으로 생성되었습니다!')
+        router.push('/')
       } catch (error) {
         console.error('차트 저장 오류:', error)
         message.error('차트 저장 중 오류가 발생했습니다.')
       }
     }
 
-    const resetForm = () => {
-      currentStep.value = 0
-      selectedDataset.value = null
-      datasetColumns.value = []
-      chartConfig.value = {
-        datasource: '',
-        viz_type: 'table',
-        slice_name: '',
-        description: '',
-        params: {}
+    const goToStep = (step) => {
+      if (step <= currentStep.value) {
+        currentStep.value = step
       }
-      chartData.value = null
     }
 
     onMounted(() => {
-      if (canCreateChart.value) {
-        loadDatasets()
+      if (!canCreateChart.value) {
+        message.error('차트 생성 권한이 없습니다.')
+        router.push('/')
+        return
       }
+      loadDatasets()
     })
 
     return {
@@ -311,15 +264,15 @@ export default defineComponent({
       previewLoading,
       steps,
       canCreateChart,
-      handleDatasetChange,
-      handleChartTypeChange,
-      updateChartParams,
-      updateChartConfig,
-      setCurrentStep,
+      loadDatasets,
+      loadDatasetColumns,
+      handleDatasetSelect,
+      handleChartTypeSelect,
+      handleConfigChange,
+      handleDetailsChange,
       previewChart,
       saveChart,
-      resetForm,
-      h
+      goToStep
     }
   }
 })

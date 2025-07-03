@@ -1,14 +1,14 @@
 <template>
-  <div :style="{ 
-    display: 'flex', 
-    justifyContent: 'center', 
-    alignItems: 'center', 
+  <div :style="{
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
     minHeight: '100vh',
     background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
   }">
-    <a-card 
-      :style="{ 
-        width: '400px', 
+    <a-card
+      :style="{
+        width: '400px',
         boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
         borderRadius: '8px'
       }"
@@ -95,10 +95,10 @@
         </a-form-item>
       </a-form>
 
-      <div :style="{ 
-        marginTop: '24px', 
-        padding: '16px', 
-        background: '#f5f5f5', 
+      <div :style="{
+        marginTop: '24px',
+        padding: '16px',
+        background: '#f5f5f5',
         borderRadius: '4px',
         fontSize: '12px',
         color: '#666'
@@ -133,19 +133,19 @@ export default defineComponent({
     UserOutlined,
     LockOutlined
   },
-  setup() {
+  setup () {
     const store = useStore()
     const router = useRouter()
-    
+
     const formRef = ref()
     const loading = ref(false)
     const error = ref('')
-    
+
     const formData = ref({
       username: '',
       password: ''
     })
-    
+
     const rules = {
       username: [
         { required: true, message: '사용자명을 입력해주세요!', trigger: 'blur' }
@@ -154,7 +154,7 @@ export default defineComponent({
         { required: true, message: '비밀번호를 입력해주세요!', trigger: 'blur' }
       ]
     }
-    
+
     const handleSubmit = async (values) => {
       loading.value = true
       error.value = ''
@@ -164,7 +164,7 @@ export default defineComponent({
           username: values.username,
           password: values.password
         })
-        
+
         if (result.success) {
           message.success('로그인에 성공했습니다!')
           router.push('/')
@@ -178,19 +178,19 @@ export default defineComponent({
         loading.value = false
       }
     }
-    
+
     const handleQuickLogin = () => {
       formData.value.username = 'admin'
       formData.value.password = 'admin'
     }
-    
+
     onMounted(() => {
       // 이미 로그인된 사용자는 대시보드로 리디렉션
       if (authService.isAuthenticated()) {
         router.push('/')
       }
     })
-    
+
     return {
       formRef,
       loading,

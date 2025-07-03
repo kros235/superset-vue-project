@@ -10,13 +10,13 @@
       label="데이터베이스"
       name="database_id"
     >
-      <a-select 
+      <a-select
         v-model:value="formData.database_id"
         placeholder="데이터베이스 선택"
       >
-        <a-select-option 
-          v-for="db in databases" 
-          :key="db.id" 
+        <a-select-option
+          v-for="db in databases"
+          :key="db.id"
           :value="db.id"
         >
           {{ db.database_name }}
@@ -28,9 +28,9 @@
       label="테이블 이름"
       name="table_name"
     >
-      <a-input 
+      <a-input
         v-model:value="formData.table_name"
-        placeholder="예: sales, users, web_traffic" 
+        placeholder="예: sales, users, web_traffic"
       />
     </a-form-item>
 
@@ -38,9 +38,9 @@
       label="스키마 (선택사항)"
       name="schema"
     >
-      <a-input 
+      <a-input
         v-model:value="formData.schema"
-        placeholder="예: public, dbo" 
+        placeholder="예: public, dbo"
       />
     </a-form-item>
 
@@ -48,7 +48,7 @@
       label="SQL 쿼리 (선택사항)"
       name="sql"
     >
-      <a-textarea 
+      <a-textarea
         v-model:value="formData.sql"
         placeholder="SELECT * FROM table_name WHERE condition"
         :rows="4"
@@ -87,7 +87,7 @@ export default defineComponent({
     }
   },
   emits: ['submit', 'cancel'],
-  setup(props, { emit }) {
+  setup (props, { emit }) {
     const formRef = ref()
     const formData = ref({
       database_id: undefined,
@@ -95,7 +95,7 @@ export default defineComponent({
       schema: '',
       sql: ''
     })
-    
+
     const rules = {
       database_id: [
         { required: true, message: '데이터베이스를 선택해주세요', trigger: 'change' }
@@ -104,11 +104,11 @@ export default defineComponent({
         { required: true, message: '테이블 이름을 입력해주세요', trigger: 'blur' }
       ]
     }
-    
+
     const handleSubmit = (values) => {
       emit('submit', values)
     }
-    
+
     // props 변경 감지
     watch(() => props.dataset, (newDataset) => {
       if (newDataset) {
@@ -127,7 +127,7 @@ export default defineComponent({
         }
       }
     }, { immediate: true })
-    
+
     return {
       formRef,
       formData,

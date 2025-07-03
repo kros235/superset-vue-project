@@ -8,11 +8,11 @@
             대시보드
           </h1>
           <p style="margin: 8px 0 0 0; color: #666">
-            안녕하세요, {{ currentUser?.first_name || currentUser?.username }}님! 
+            안녕하세요, {{ currentUser?.first_name || currentUser?.username }}님!
             <span v-if="isAdmin">(관리자)</span>
           </p>
         </div>
-        <a-button 
+        <a-button
           @click="loadDashboardData"
           :loading="loading"
         >
@@ -35,7 +35,7 @@
     />
 
     <!-- 로딩 스피너 -->
-    <div 
+    <div
       v-if="loading"
       style="display: flex; justify-content: center; align-items: center; height: 400px"
     >
@@ -58,7 +58,7 @@
             </a-statistic>
           </a-card>
         </a-col>
-        
+
         <a-col :xs="24" :sm="12" :lg="6">
           <a-card hoverable>
             <a-statistic
@@ -72,7 +72,7 @@
             </a-statistic>
           </a-card>
         </a-col>
-        
+
         <a-col :xs="24" :sm="12" :lg="6">
           <a-card hoverable>
             <a-statistic
@@ -86,7 +86,7 @@
             </a-statistic>
           </a-card>
         </a-col>
-        
+
         <a-col v-if="canManageUsers" :xs="24" :sm="12" :lg="6">
           <a-card hoverable>
             <a-statistic
@@ -112,7 +112,7 @@
         </h2>
       </div>
 
-      <a-empty 
+      <a-empty
         v-if="charts.length === 0"
         description="표시할 차트가 없습니다"
         :image="Simple"
@@ -121,13 +121,13 @@
           첫 번째 차트 만들기
         </a-button>
       </a-empty>
-      
+
       <a-row v-else :gutter="[16, 16]">
-        <a-col 
+        <a-col
           v-for="chart in displayedCharts"
           :key="chart.id"
-          :xs="24" 
-          :sm="12" 
+          :xs="24"
+          :sm="12"
           :lg="userLayout.chartsPerRow === 1 ? 24 : 12"
           :xl="userLayout.chartsPerRow === 1 ? 24 : 12"
         >
@@ -178,7 +178,7 @@
 import { defineComponent, ref, computed, onMounted, h } from 'vue'
 import { useStore } from 'vuex'
 import { useRouter } from 'vue-router'
-import { 
+import {
   ReloadOutlined,
   BarChartOutlined,
   LineChartOutlined,
@@ -200,10 +200,10 @@ export default defineComponent({
     UserOutlined,
     ChartCard
   },
-  setup() {
+  setup () {
     const store = useStore()
     const router = useRouter()
-    
+
     const loading = ref(true)
     const error = ref('')
     const charts = ref([])
@@ -213,22 +213,22 @@ export default defineComponent({
       totalDatasets: 0,
       totalUsers: 0
     })
-    
+
     const currentUser = computed(() => store.getters.currentUser)
     const isAdmin = computed(() => store.getters.isAdmin)
     const canManageUsers = computed(() => authService.canManageUsers())
     const canCreateChart = computed(() => authService.canCreateChart())
     const userLayout = computed(() => authService.getDashboardLayout())
-    
+
     const displayedCharts = computed(() => {
       if (userLayout.value.showAllCharts) {
         return charts.value
       }
       return charts.value.slice(0, 4)
     })
-    
+
     const Simple = Empty.PRESENTED_IMAGE_SIMPLE
-    
+
     const loadDashboardData = async () => {
       loading.value = true
       error.value = ''
@@ -240,7 +240,7 @@ export default defineComponent({
           supersetAPI.getDashboards(),
           supersetAPI.getDatasets()
         ]
-        
+
         if (authService.canManageUsers()) {
           promises.push(supersetAPI.getUsers())
         } else {
@@ -268,7 +268,6 @@ export default defineComponent({
 
           charts.value = filteredCharts
         }
-
       } catch (err) {
         console.error('Dashboard loading error:', err)
         error.value = '대시보드 데이터를 불러오는 중 오류가 발생했습니다.'
@@ -276,7 +275,7 @@ export default defineComponent({
         loading.value = false
       }
     }
-    
+
     const loadChartData = async (chartId) => {
       try {
         // 실제 차트 데이터 로드 로직
@@ -288,11 +287,11 @@ export default defineComponent({
         message.error('차트 데이터 로딩 중 오류가 발생했습니다.')
       }
     }
-    
+
     onMounted(() => {
       loadDashboardData()
     })
-    
+
     return {
       loading,
       error,

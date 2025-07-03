@@ -10,9 +10,9 @@
       label="데이터베이스 이름"
       name="database_name"
     >
-      <a-input 
+      <a-input
         v-model:value="formData.database_name"
-        placeholder="예: Sample Dashboard DB" 
+        placeholder="예: Sample Dashboard DB"
       />
     </a-form-item>
 
@@ -20,7 +20,7 @@
       label="SQLAlchemy URI"
       name="sqlalchemy_uri"
     >
-      <a-textarea 
+      <a-textarea
         v-model:value="formData.sqlalchemy_uri"
         placeholder="예: mysql+pymysql://superset:superset123@mariadb:3306/sample_dashboard"
         :rows="3"
@@ -46,7 +46,7 @@
 
     <a-form-item>
       <a-space>
-        <a-button 
+        <a-button
           @click="handleTest"
           :loading="testingConnection"
         >
@@ -86,13 +86,13 @@ export default defineComponent({
     }
   },
   emits: ['submit', 'test', 'cancel'],
-  setup(props, { emit }) {
+  setup (props, { emit }) {
     const formRef = ref()
     const formData = ref({
       database_name: '',
       sqlalchemy_uri: ''
     })
-    
+
     const rules = {
       database_name: [
         { required: true, message: '데이터베이스 이름을 입력해주세요', trigger: 'blur' }
@@ -101,17 +101,17 @@ export default defineComponent({
         { required: true, message: 'SQLAlchemy URI를 입력해주세요', trigger: 'blur' }
       ]
     }
-    
+
     const handleSubmit = (values) => {
       emit('submit', values)
     }
-    
+
     const handleTest = () => {
       formRef.value.validateFields().then(values => {
         emit('test', values)
       }).catch(console.error)
     }
-    
+
     // props 변경 감지
     watch(() => props.database, (newDatabase) => {
       if (newDatabase) {
@@ -126,7 +126,7 @@ export default defineComponent({
         }
       }
     }, { immediate: true })
-    
+
     return {
       formRef,
       formData,

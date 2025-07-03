@@ -1,114 +1,105 @@
-# superset_config.py (네트워크 접근 허용)
+# superset_config.py
 import os
-from flask import request
-from flask_cors import CORS
-
-# Flask 앱 뮤테이터 함수
-def FLASK_APP_MUTATOR(app):
-    """Flask 앱에 CORS 설정 추가 (네트워크 접근 허용)"""
-    
-    # 네트워크 환경을 위한 CORS 설정
-    CORS(app, 
-         origins=[
-             'http://localhost:3001',
-             'http://localhost:3000',
-             'http://127.0.0.1:3001',
-             'http://127.0.0.1:3000',
-             # 실제 IP 주소들 (여러 네트워크 대역 허용)
-             'http://192.168.*:3001',
-             'http://192.168.*:3000',
-             'http://10.*:3001',
-             'http://10.*:3000',
-             'http://172.*:3001',
-             'http://172.*:3000'
-         ],
-         origin_regex=[
-             r"http://192\.168\.\d+\.\d+:300[01]",
-             r"http://10\.\d+\.\d+\.\d+:300[01]",
-             r"http://172\.\d+\.\d+\.\d+:300[01]"
-         ],
-         methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-         allow_headers=[
-             'Content-Type',
-             'Authorization',
-             'X-CSRFToken',
-             'X-Requested-With',
-             'Accept',
-             'Origin',
-             'Cache-Control',
-             'X-Request-ID'
-         ],
-         expose_headers=[
-             'Content-Type',
-             'Authorization',
-             'X-CSRFToken',
-             'Content-Length',
-             'X-Total-Count'
-         ],
-         supports_credentials=True,
-         max_age=86400  # 24시간 캐시
-    )
-    
-    # 추가 헤더 설정
-    @app.after_request
-    def after_request(response):
-        origin = request.environ.get('HTTP_ORIGIN', '')
-        # 로컬 네트워크 IP 대역 허용
-        if (origin.startswith('http://localhost') or 
-            origin.startswith('http://127.0.0.1') or
-            origin.startswith('http://192.168.') or
-            origin.startswith('http://10.') or
-            origin.startswith('http://172.')):
-            response.headers['Access-Control-Allow-Origin'] = origin
-            response.headers['Access-Control-Allow-Credentials'] = 'true'
-            response.headers['Access-Control-Allow-Methods'] = 'GET,POST,PUT,DELETE,OPTIONS,PATCH'
-            response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,X-CSRFToken,X-Requested-With,Accept,Origin,Cache-Control'
-        return response
-    
-    return app
+import secrets
 
 # 기본 설정
-DEBUG = True
-WTF_CSRF_ENABLED = False
-TALISMAN_ENABLED = False
+ROW_LIMIT = 5000
+SUPERSET_WEBSERVER_PORT = 8088
+SUPERSET_WEBSERVER_TIMEOUT = 60
 
-# 보안 설정 완화 (개발 환경)
-SECRET_KEY = 'your-secret-key-change-this-in-production-12345'
-PREVENT_UNSAFE_DB_CONNECTIONS = False
+# 시크릿 키 (32바이트 이상)
+SECRET_KEY = os.environ.get('SUPERSET_SECRET_KEY', 'your_secret_key_here_must_be_at_least_32_bytes_long_for_security')
 
-# 네트워크 설정
-WEB_SERVER_ADDRESS = '0.0.0.0'
-WEB_SERVER_PORT = 8088
+# JWT 시크릿 키 추가 (32바이트 이상 필수)
+JWT_ACCESS_TOKEN_EXPIRES = 86400  # 24시간
+JWT_REFRESH_TOKEN_EXPIRES = 604800  # 7일
+GUEST_TOKEN_JWT_SECRET = os.environ.get('SUPERSET_JWT_SECRET', 'super_secret_jwt_key_that_is_at_least_32_bytes_long_for_async_queries')
 
-# 세션 설정
-SESSION_COOKIE_SAMESITE = None
-SESSION_COOKIE_SECURE = False
-SESSION_COOKIE_HTTPONLY = False
+# 비동기 쿼리를 위한 JWT 설정
+GLOBAL_ASYNC_QUERIES_JWT_SECRET = GUEST_TOKEN_JWT_SECRET
+
+# 데이터베이스 설정
+SQLALCHEMY_DATABASE_URI = os.environ.get(
+    'SQLALCHEMY_DATABASE_URI',
+    'mysql+pymysql://superset:superset123@mariadb:3306/sample_dashboard'
+)
+
+# Redis 설정
+REDIS_HOST = os.environ.get('REDIS_HOST', 'redis')
+REDIS_PORT = int(os.environ.get('REDIS_PORT', 6379))
 
 # 캐시 설정
 CACHE_CONFIG = {
-    'CACHE_TYPE': 'redis',
+    'CACHE_TYPE': 'RedisCache',
     'CACHE_DEFAULT_TIMEOUT': 300,
     'CACHE_KEY_PREFIX': 'superset_',
-    'CACHE_REDIS_HOST': 'redis',
-    'CACHE_REDIS_PORT': 6379,
+    'CACHE_REDIS_HOST': REDIS_HOST,
+    'CACHE_REDIS_PORT': REDIS_PORT,
     'CACHE_REDIS_DB': 1,
-    'CACHE_REDIS_URL': 'redis://redis:6379/1'
+    'CACHE_REDIS_URL': f'redis://{REDIS_HOST}:{REDIS_PORT}/1'
 }
+
+# CORS 설정 (Vue.js 프론트엔드를 위해)
+ENABLE_CORS = True
+CORS_OPTIONS = {
+    'supports_credentials': True,
+    'allow_headers': [
+        'X-CSRFToken', 'Content-Type', 'Origin', 'Authorization',
+        'Accept', 'Accept-Language', 'DNT', 'Cache-Control',
+        'X-Mx-ReqToken', 'Keep-Alive', 'User-Agent',
+        'X-Requested-With', 'If-Modified-Since'
+    ],
+    'resources': {
+        '/api/*': {
+            'origins': [
+                'http://localhost:8080',
+                'http://127.0.0.1:8080',
+                'http://0.0.0.0:8080'
+            ]
+        }
+    }
+}
+
+# 웹 서버 설정
+WTF_CSRF_ENABLED = True
+WTF_CSRF_EXEMPT_LIST = []
+WTF_CSRF_TIME_LIMIT = None
+
+# 세션 설정
+PERMANENT_SESSION_LIFETIME = 86400  # 24시간
+
+# 로깅 설정
+ENABLE_TIME_ROTATE = True
+LOG_LEVEL = 'DEBUG'
+LOG_FORMAT = '%(asctime)s:%(levelname)s:%(name)s:%(message)s'
+
+# 추가 보안 설정
+HTTP_HEADERS = {}
+OVERRIDE_HTTP_HEADERS = {}
+ENABLE_PROXY_FIX = False
 
 # Feature flags
 FEATURE_FLAGS = {
     'ENABLE_TEMPLATE_PROCESSING': True,
+    'DASHBOARD_NATIVE_FILTERS': True,
+    'DASHBOARD_CROSS_FILTERS': True,
+    'GLOBAL_ASYNC_QUERIES': True,
+    'VERSIONED_EXPORT': True
 }
 
-# API 설정
+# 비동기 쿼리 설정 (중요!)
+GLOBAL_ASYNC_QUERIES_TRANSPORT = "polling"
+GLOBAL_ASYNC_QUERIES_POLLING_DELAY = 500
+
+# Redis를 사용한 비동기 쿼리 결과 백엔드
+RESULTS_BACKEND = {
+    'CACHE_TYPE': 'RedisCache',
+    'CACHE_DEFAULT_TIMEOUT': 86400,  # 24시간
+    'CACHE_KEY_PREFIX': 'superset_results_',
+    'CACHE_REDIS_HOST': REDIS_HOST,
+    'CACHE_REDIS_PORT': REDIS_PORT,
+    'CACHE_REDIS_DB': 0,
+}
+
+# SQL Lab 설정
 SQLLAB_CTAS_NO_LIMIT = True
-SQLLAB_TIMEOUT = 300
-SUPERSET_WEBSERVER_TIMEOUT = 60
-
-# 로그 레벨
-LOG_LEVEL = 'INFO'
-
-# 사용자 등록 허용 (개발 환경)
-AUTH_USER_REGISTRATION = True
-AUTH_USER_REGISTRATION_ROLE = "Public"

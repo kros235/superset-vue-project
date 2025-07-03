@@ -1,121 +1,117 @@
 // vue-frontend/src/store/index.js
 import { createStore } from 'vuex'
 import authService from '../services/authService'
-import supersetAPI from '../services/supersetAPI'
 
-export default createStore({
+const store = createStore({
   state: {
     user: null,
-    loading: false,
-    charts: [],
-    dashboards: [],
-    datasets: [],
-    databases: []
-  },
-  
-  getters: {
-    isAuthenticated: state => !!state.user,
-    currentUser: state => state.user,
-    isAdmin: state => state.user && authService.isAdmin(),
-    availableMenus: state => authService.getAvailableMenus()
+    isAuthenticated: false,
+    availableMenus: []
   },
   
   mutations: {
     SET_USER(state, user) {
       state.user = user
+      state.isAuthenticated = !!user
     },
     
-    SET_LOADING(state, status) {
-      state.loading = status
-    },
-    
-    SET_CHARTS(state, charts) {
-      state.charts = charts
-    },
-    
-    SET_DASHBOARDS(state, dashboards) {
-      state.dashboards = dashboards
-    },
-    
-    SET_DATASETS(state, datasets) {
-      state.datasets = datasets
-    },
-    
-    SET_DATABASES(state, databases) {
-      state.databases = databases
+    SET_AVAILABLE_MENUS(state, menus) {
+      state.availableMenus = menus
     },
     
     CLEAR_USER(state) {
       state.user = null
-      state.charts = []
-      state.dashboards = []
-      state.datasets = []
-      state.databases = []
+      state.isAuthenticated = false
+      state.availableMenus = []
     }
   },
   
   actions: {
-    async login({ commit }, { username, password }) {
-      commit('SET_LOADING', true)
+    async login({ commit }, credentials) {
       try {
-        const result = await authService.login(username, password)
+        const result = await authService.login(credentials.username, credentials.password)
+        
         if (result.success) {
-          commit('SET_USER', result.user)
-          return result
+          const user = authService.getCurrentUser()
+          const menus = authService.getAvailableMenus()
+          
+          console.log('로그인 성공 - 사용자:', user)
+          console.log('로그인 성공 - 메뉴:', menus)
+          
+          commit('SET_USER', user)
+          commit('SET_AVAILABLE_MENUS', menus)
+          
+          return { success: true }
+        } else {
+          return { success: false, message: result.message }
         }
-        throw new Error(result.message)
-      } finally {
-        commit('SET_LOADING', false)
+      } catch (error) {
+        console.error('Login action error:', error)
+        return { success: false, message: '로그인 중 오류가 발생했습니다.' }
       }
     },
     
     async logout({ commit }) {
-      authService.logout()
-      commit('CLEAR_USER')
-    },
-    
-    async loadCharts({ commit }) {
       try {
-        const charts = await supersetAPI.getCharts()
-        commit('SET_CHARTS', charts)
-        return charts
+        await authService.logout()
+        commit('CLEAR_USER')
+        return { success: true }
       } catch (error) {
-        console.error('차트 로드 실패:', error)
-        throw error
+        console.error('Logout action error:', error)
+        commit('CLEAR_USER') // 오류가 있어도 로컬 상태는 초기화
+        return { success: false, message: '로그아웃 중 오류가 발생했습니다.' }
       }
     },
     
-    async loadDashboards({ commit }) {
+    async initializeAuth({ commit }) {
       try {
-        const dashboards = await supersetAPI.getDashboards()
-        commit('SET_DASHBOARDS', dashboards)
-        return dashboards
+        if (authService.isAuthenticated()) {
+          const user = authService.getCurrentUser()
+          const menus = authService.getAvailableMenus()
+          
+          console.log('Auth 초기화 - 사용자:', user)
+          console.log('Auth 초기화 - 메뉴:', menus)
+          
+          commit('SET_USER', user)
+          commit('SET_AVAILABLE_MENUS', menus)
+          
+          return { success: true }
+        }
+        return { success: false }
       } catch (error) {
-        console.error('대시보드 로드 실패:', error)
-        throw error
+        console.error('Initialize auth error:', error)
+        commit('CLEAR_USER')
+        return { success: false }
       }
     },
     
-    async loadDatasets({ commit }) {
+    // 메뉴 새로고침 액션 추가
+    refreshMenus({ commit }) {
       try {
-        const datasets = await supersetAPI.getDatasets()
-        commit('SET_DATASETS', datasets)
-        return datasets
+        const menus = authService.getAvailableMenus()
+        console.log('메뉴 새로고침:', menus)
+        commit('SET_AVAILABLE_MENUS', menus)
+        return menus
       } catch (error) {
-        console.error('데이터셋 로드 실패:', error)
-        throw error
+        console.error('Refresh menus error:', error)
+        return []
       }
+    }
+  },
+  
+  getters: {
+    currentUser: (state) => state.user,
+    isAuthenticated: (state) => state.isAuthenticated,
+    availableMenus: (state) => state.availableMenus,
+    isAdmin: (state) => {
+      if (!state.user) return false
+      return authService.isAdmin()
     },
-    
-    async loadDatabases({ commit }) {
-      try {
-        const databases = await supersetAPI.getDatabases()
-        commit('SET_DATABASES', databases)
-        return databases
-      } catch (error) {
-        console.error('데이터베이스 로드 실패:', error)
-        throw error
-      }
+    userRole: (state) => {
+      if (!state.user) return null
+      return authService.getUserRole()
     }
   }
 })
+
+export default store

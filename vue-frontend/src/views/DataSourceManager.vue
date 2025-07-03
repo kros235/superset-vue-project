@@ -19,12 +19,12 @@
 
     <a-tabs v-else default-active-key="databases">
       <a-tab-pane tab="데이터베이스" key="databases">
-        <a-card 
+        <a-card
           title="데이터베이스 연결"
         >
           <template #extra>
-            <a-button 
-              type="primary" 
+            <a-button
+              type="primary"
               @click="showDatabaseModal"
             >
               <template #icon>
@@ -49,12 +49,12 @@
       </a-tab-pane>
 
       <a-tab-pane tab="데이터셋" key="datasets">
-        <a-card 
+        <a-card
           title="데이터셋"
         >
           <template #extra>
-            <a-button 
-              type="primary" 
+            <a-button
+              type="primary"
               @click="showDatasetModal"
               :disabled="databases.length === 0"
             >
@@ -73,7 +73,7 @@
             show-icon
             style="margin-bottom: 16px"
           />
-          
+
           <a-table
             :dataSource="datasets"
             :columns="datasetColumns"
@@ -155,7 +155,7 @@ export default defineComponent({
     const editingDatabase = ref(null)
     const editingDataset = ref(null)
     const testingConnection = ref(false)
-    
+
     const canConnectDatabase = computed(() => authService.canConnectDatabase())
 
     // 데이터베이스 테이블 컬럼 정의
@@ -281,7 +281,7 @@ export default defineComponent({
         ])
       }
     ]
-    
+
     const loadData = async () => {
       loading.value = true
       try {
@@ -298,37 +298,37 @@ export default defineComponent({
         loading.value = false
       }
     }
-    
+
     const showDatabaseModal = () => {
       editingDatabase.value = null
       databaseModalVisible.value = true
     }
-    
+
     const showDatasetModal = () => {
       editingDataset.value = null
       datasetModalVisible.value = true
     }
-    
+
     const closeDatabaseModal = () => {
       databaseModalVisible.value = false
       editingDatabase.value = null
     }
-    
+
     const closeDatasetModal = () => {
       datasetModalVisible.value = false
       editingDataset.value = null
     }
-    
+
     const editDatabase = (database) => {
       editingDatabase.value = database
       databaseModalVisible.value = true
     }
-    
+
     const editDataset = (dataset) => {
       editingDataset.value = dataset
       datasetModalVisible.value = true
     }
-    
+
     const handleDatabaseSubmit = async (values) => {
       try {
         const payload = {
@@ -355,7 +355,7 @@ export default defineComponent({
         message.error('데이터베이스 저장 중 오류가 발생했습니다.')
       }
     }
-    
+
     const handleDatasetSubmit = async (values) => {
       try {
         const payload = {
@@ -380,7 +380,7 @@ export default defineComponent({
         message.error('데이터셋 저장 중 오류가 발생했습니다.')
       }
     }
-    
+
     const testConnection = async (values) => {
       testingConnection.value = true
       try {
@@ -388,7 +388,7 @@ export default defineComponent({
           sqlalchemy_uri: values.sqlalchemy_uri,
           database_name: values.database_name
         })
-        
+
         if (result.success) {
           message.success('데이터베이스 연결이 성공했습니다!')
         } else {
@@ -401,7 +401,7 @@ export default defineComponent({
         testingConnection.value = false
       }
     }
-    
+
     const deleteDatabase = async (id) => {
       try {
         await supersetAPI.deleteDatabase(id)
@@ -412,7 +412,7 @@ export default defineComponent({
         message.error('데이터베이스 삭제 중 오류가 발생했습니다.')
       }
     }
-    
+
     const deleteDataset = async (id) => {
       try {
         await supersetAPI.deleteDataset(id)
@@ -423,13 +423,13 @@ export default defineComponent({
         message.error('데이터셋 삭제 중 오류가 발생했습니다.')
       }
     }
-    
+
     onMounted(() => {
       if (canConnectDatabase.value) {
         loadData()
       }
     })
-    
+
     return {
       databases,
       datasets,

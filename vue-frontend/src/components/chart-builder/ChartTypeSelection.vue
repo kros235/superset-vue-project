@@ -1,46 +1,68 @@
 <template>
-  <a-card title="2단계: 차트 타입 선택" style="margin-bottom: 16px">
+  <div>
+    <h3>차트 타입 선택</h3>
+    <p style="color: #666; margin-bottom: 24px">
+      생성할 차트의 시각화 타입을 선택해주세요.
+    </p>
+
     <a-row :gutter="[16, 16]">
       <a-col
-        v-for="type in chartTypes"
-        :key="type.key"
+        v-for="chartType in chartTypes"
+        :key="chartType.key"
         :xs="24"
         :sm="12"
-        :md="8"
+        :lg="8"
       >
         <a-card
           hoverable
-          :class="chartConfig.viz_type === type.key ? 'selected-chart-type' : ''"
-          :style="{
-            border: chartConfig.viz_type === type.key ? '2px solid #1890ff' : '1px solid #d9d9d9',
-            cursor: 'pointer'
-          }"
-          @click="$emit('change', type.key)"
+          :class="{ 'selected-chart-type': selectedType === chartType.key }"
+          @click="selectChartType(chartType.key)"
+          style="cursor: pointer; text-align: center"
         >
-          <div style="text-align: center">
-            <div style="font-size: 24px; margin-bottom: 8px">
-              <component :is="type.icon" />
-            </div>
-            <h4>{{ type.title }}</h4>
-            <p style="font-size: 12px; color: #666">
-              {{ type.description }}
-            </p>
+          <div style="font-size: 48px; color: #1890ff; margin-bottom: 16px">
+            <component :is="chartType.icon" />
+          </div>
+
+          <h4 style="margin-bottom: 8px">{{ chartType.name }}</h4>
+          <p style="color: #666; font-size: 14px">
+            {{ chartType.description }}
+          </p>
+
+          <div v-if="selectedType === chartType.key" style="margin-top: 12px">
+            <a-tag color="green">
+              <CheckOutlined />
+              선택됨
+            </a-tag>
           </div>
         </a-card>
       </a-col>
     </a-row>
-  </a-card>
+
+    <div v-if="selectedType" style="margin-top: 24px">
+      <a-divider />
+      <h4>선택된 차트 타입: {{ getSelectedChartName() }}</h4>
+
+      <a-button
+        type="primary"
+        @click="$emit('next')"
+        style="margin-top: 16px"
+      >
+        다음 단계
+      </a-button>
+    </div>
+  </div>
 </template>
 
 <script>
-import { defineComponent } from 'vue'
+import { defineComponent, ref } from 'vue'
 import {
   TableOutlined,
   BarChartOutlined,
   LineChartOutlined,
   PieChartOutlined,
   AreaChartOutlined,
-  DotChartOutlined
+  DotChartOutlined,
+  CheckOutlined
 } from '@ant-design/icons-vue'
 
 export default defineComponent({
@@ -51,57 +73,69 @@ export default defineComponent({
     LineChartOutlined,
     PieChartOutlined,
     AreaChartOutlined,
-    DotChartOutlined
+    DotChartOutlined,
+    CheckOutlined
   },
   props: {
-    chartConfig: {
-      type: Object,
-      required: true
+    selectedType: {
+      type: String,
+      default: ''
     }
   },
-  emits: ['change'],
-  setup () {
-    const chartTypes = [
+  emits: ['select', 'next'],
+  setup (props, { emit }) {
+    const chartTypes = ref([
       {
         key: 'table',
-        icon: TableOutlined,
-        title: '테이블',
-        description: '데이터를 표 형태로 표시'
+        name: '테이블',
+        description: '데이터를 표 형태로 표시합니다',
+        icon: TableOutlined
       },
       {
-        key: 'bar',
-        icon: BarChartOutlined,
-        title: '막대 차트',
-        description: '카테고리별 수치 비교'
+        key: 'dist_bar',
+        name: '막대 차트',
+        description: '카테고리별 값을 막대로 비교합니다',
+        icon: BarChartOutlined
       },
       {
         key: 'line',
-        icon: LineChartOutlined,
-        title: '선 차트',
-        description: '시간에 따른 변화 추이'
+        name: '선 차트',
+        description: '시간에 따른 변화를 선으로 표시합니다',
+        icon: LineChartOutlined
       },
       {
         key: 'pie',
-        icon: PieChartOutlined,
-        title: '파이 차트',
-        description: '비율 및 구성 표시'
+        name: '파이 차트',
+        description: '전체에서 각 부분의 비율을 표시합니다',
+        icon: PieChartOutlined
       },
       {
         key: 'area',
-        icon: AreaChartOutlined,
-        title: '영역 차트',
-        description: '누적 데이터 표시'
+        name: '영역 차트',
+        description: '시간에 따른 누적 변화를 표시합니다',
+        icon: AreaChartOutlined
       },
       {
         key: 'scatter',
-        icon: DotChartOutlined,
-        title: '산점도',
-        description: '두 변수 간의 상관관계'
+        name: '산점도',
+        description: '두 변수 간의 상관관계를 표시합니다',
+        icon: DotChartOutlined
       }
-    ]
+    ])
+
+    const selectChartType = (type) => {
+      emit('select', type)
+    }
+
+    const getSelectedChartName = () => {
+      const selected = chartTypes.value.find(type => type.key === props.selectedType)
+      return selected ? selected.name : ''
+    }
 
     return {
-      chartTypes
+      chartTypes,
+      selectChartType,
+      getSelectedChartName
     }
   }
 })
@@ -109,6 +143,12 @@ export default defineComponent({
 
 <style scoped>
 .selected-chart-type {
-  background-color: #f0f8ff;
+  border-color: #1890ff;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+}
+
+.ant-card:hover {
+  border-color: #1890ff;
+  box-shadow: 0 1px 2px -2px rgba(0, 0, 0, 0.16), 0 3px 6px 0 rgba(0, 0, 0, 0.12), 0 5px 12px 4px rgba(0, 0, 0, 0.09);
 }
 </style>
