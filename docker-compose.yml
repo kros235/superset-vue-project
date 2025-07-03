@@ -71,20 +71,40 @@ services:
       "
 
   # React Frontend
-  frontend:
+  # frontend:
+  #  build:
+  #    context: ./frontend
+  #    dockerfile: Dockerfile
+  #  container_name: react_frontend
+  #  ports:
+  #    - "0.0.0.0:3001:3000"
+  #  volumes:
+  #    - ./frontend:/app
+  #    - /app/node_modules
+  #  environment:
+  #    - CHOKIDAR_USEPOLLING=true
+  #    - REACT_APP_SUPERSET_URL=http://localhost:8088
+  #    - HOST=0.0.0.0
+  #  networks:
+  #    - superset_network
+  #  restart: unless-stopped
+  #  depends_on:
+  #    - superset
+
+# Vue.js Frontend
+  vue-frontend:
     build:
-      context: ./frontend
+      context: ./vue-frontend
       dockerfile: Dockerfile
-    container_name: react_frontend
+    container_name: vue_frontend
     ports:
-      - "0.0.0.0:3001:3000"
+      - "0.0.0.0:3002:8080"
     volumes:
-      - ./frontend:/app
+      - ./vue-frontend:/app
       - /app/node_modules
     environment:
       - CHOKIDAR_USEPOLLING=true
-      - REACT_APP_SUPERSET_URL=http://localhost:8088
-      - HOST=0.0.0.0
+      - VUE_APP_SUPERSET_URL=http://localhost:8088
     networks:
       - superset_network
     restart: unless-stopped
