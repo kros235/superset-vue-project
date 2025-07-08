@@ -3,108 +3,80 @@ import supersetAPI from './supersetAPI'
 
 class AuthService {
   constructor() {
-    this.tokenKey = 'superset_access_token'
-    this.userKey = 'superset_user'
-    this.refreshTokenKey = 'superset_refresh_token'
+    console.log('AuthService 초기화')
   }
 
+  // 연결 상태 확인
+  async checkConnection() {
+    return await supersetAPI.checkConnection()
+  }
+
+  // 로그인
   async login(username, password) {
     try {
-      console.log('로그인 시도:', { username })
+      console.log(`[AuthService] 로그인 시도: ${username}`)
+      const result = await supersetAPI.login(username, password)
       
-      const response = await supersetAPI.login(username, password)
-      
-      if (response.access_token) {
-        // 토큰 저장
-        localStorage.setItem(this.tokenKey, response.access_token)
-        if (response.refresh_token) {
-          localStorage.setItem(this.refreshTokenKey, response.refresh_token)
-        }
-        
-        // 사용자 정보 가져오기
-        try {
-          const userInfo = await supersetAPI.getUserInfo()
-          localStorage.setItem(this.userKey, JSON.stringify(userInfo))
-          
-          console.log('로그인 성공:', userInfo)
-          return { success: true, user: userInfo }
-        } catch (userError) {
-          console.error('사용자 정보 로드 실패:', userError)
-          // 토큰은 있지만 사용자 정보를 가져올 수 없는 경우
-          // 기본 사용자 정보로 설정
-          const basicUser = {
-            username: username,
-            first_name: username,
-            roles: [{ name: 'Admin' }]
-          }
-          localStorage.setItem(this.userKey, JSON.stringify(basicUser))
-          return { success: true, user: basicUser }
-        }
+      if (result.success) {
+        console.log('[AuthService] 로그인 성공')
+        return result
       } else {
-        return { success: false, message: '로그인에 실패했습니다.' }
+        console.error('[AuthService] 로그인 실패:', result.error)
+        return result
       }
     } catch (error) {
-      console.error('로그인 오류:', error)
-      
-      if (error.response) {
-        const status = error.response.status
-        const data = error.response.data
-        
-        if (status === 401) {
-          return { success: false, message: '사용자명 또는 비밀번호가 잘못되었습니다.' }
-        } else if (status === 400) {
-          return { success: false, message: data.message || '잘못된 요청입니다.' }
-        } else {
-          return { success: false, message: `서버 오류: ${status}` }
-        }
-      } else if (error.request) {
-        return { success: false, message: '서버에 연결할 수 없습니다.' }
-      } else {
-        return { success: false, message: '로그인 중 오류가 발생했습니다.' }
+      console.error('[AuthService] 로그인 처리 중 오류:', error)
+      return {
+        success: false,
+        error: error.message || '로그인 처리 중 오류가 발생했습니다.'
       }
     }
   }
 
+  // 사용자 정보 조회
+  async getUserInfo() {
+    try {
+      return await supersetAPI.getUserInfo()
+    } catch (error) {
+      console.error('[AuthService] 사용자 정보 조회 실패:', error)
+      return {
+        success: false,
+        error: error.message
+      }
+    }
+  }
+
+  // 로그아웃
   async logout() {
     try {
-      const token = this.getToken()
-      if (token) {
-        await supersetAPI.logout()
+      await supersetAPI.logout()
+      console.log('[AuthService] 로그아웃 완료')
+      
+      // 페이지 리다이렉트
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login'
       }
     } catch (error) {
-      console.error('로그아웃 API 오류:', error)
-    } finally {
-      // 로컬 스토리지 정리
-      localStorage.removeItem(this.tokenKey)
-      localStorage.removeItem(this.userKey)
-      localStorage.removeItem(this.refreshTokenKey)
+      console.error('[AuthService] 로그아웃 처리 중 오류:', error)
     }
   }
 
+  // 인증 상태 확인
   isAuthenticated() {
-    const token = this.getToken()
-    const user = this.getCurrentUser()
-    return !!(token && user)
+    return supersetAPI.isAuthenticated()
   }
 
-  getToken() {
-    return localStorage.getItem(this.tokenKey)
-  }
-
-  getRefreshToken() {
-    return localStorage.getItem(this.refreshTokenKey)
-  }
-
+  // 현재 사용자 정보 조회
   getCurrentUser() {
     try {
-      const userStr = localStorage.getItem(this.userKey)
+      const userStr = localStorage.getItem('superset_user')
       let user = userStr ? JSON.parse(userStr) : null
       
-      // 임시 해결책: admin 사용자에게 강제로 Admin 역할 부여
+      // admin 사용자에게 강제로 Admin 역할 부여 (임시 해결책)
       if (user && user.username === 'admin') {
         if (!user.roles || !Array.isArray(user.roles) || user.roles.length === 0) {
           user.roles = [{ name: 'Admin' }]
-          localStorage.setItem(this.userKey, JSON.stringify(user))
+          localStorage.setItem('superset_user', JSON.stringify(user))
           console.log('admin 사용자에게 강제로 Admin 역할 부여됨:', user)
         }
       }
@@ -116,29 +88,30 @@ class AuthService {
     }
   }
 
+  // 사용자 역할 조회
   getUserRole() {
     const user = this.getCurrentUser()
     if (!user || !user.roles || !Array.isArray(user.roles)) {
       return null
     }
-    
-    // 첫 번째 역할 반환
     return user.roles[0]?.name || null
   }
 
+  // 특정 역할 확인
   hasRole(roleName) {
     const user = this.getCurrentUser()
     if (!user || !user.roles || !Array.isArray(user.roles)) {
       return false
     }
-    
     return user.roles.some(role => role.name === roleName)
   }
 
+  // 관리자 여부 확인
   isAdmin() {
     return this.hasRole('Admin')
   }
 
+  // 권한 확인 메서드들
   canManageUsers() {
     return this.isAdmin()
   }
@@ -163,6 +136,7 @@ class AuthService {
     return this.isAdmin() || this.hasRole('Alpha')
   }
 
+  // 사용 가능한 메뉴 조회
   getAvailableMenus() {
     const menus = []
     
@@ -207,6 +181,7 @@ class AuthService {
     return menus
   }
 
+  // 대시보드 레이아웃 설정
   getDashboardLayout() {
     const role = this.getUserRole()
     
@@ -242,29 +217,9 @@ class AuthService {
     }
   }
 
-  async refreshToken() {
-    try {
-      const refreshToken = this.getRefreshToken()
-      if (!refreshToken) {
-        throw new Error('리프레시 토큰이 없습니다.')
-      }
-
-      const response = await supersetAPI.refreshToken(refreshToken)
-      
-      if (response.access_token) {
-        localStorage.setItem(this.tokenKey, response.access_token)
-        if (response.refresh_token) {
-          localStorage.setItem(this.refreshTokenKey, response.refresh_token)
-        }
-        return response.access_token
-      } else {
-        throw new Error('토큰 갱신 실패')
-      }
-    } catch (error) {
-      console.error('토큰 갱신 오류:', error)
-      this.logout()
-      throw error
-    }
+  // 저장된 토큰으로 초기화
+  initializeFromStorage() {
+    return this.isAuthenticated()
   }
 }
 

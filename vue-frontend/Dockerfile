@@ -10,11 +10,14 @@ COPY package*.json ./
 # 의존성 설치
 RUN npm install
 
-# 소스 코드 복사
+# 전체 소스코드 복사
 COPY . .
+
+# Vue CLI 서비스 전역 설치
+RUN npm install -g @vue/cli-service
 
 # 포트 노출
 EXPOSE 8080
 
-# 개발 서버 실행
+# 개발 서버 시작
 CMD ["npm", "run", "serve"]

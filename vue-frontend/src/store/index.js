@@ -43,7 +43,7 @@ const store = createStore({
           
           return { success: true }
         } else {
-          return { success: false, message: result.message }
+          return { success: false, message: result.error || result.message }
         }
       } catch (error) {
         console.error('Login action error:', error)
@@ -65,6 +65,8 @@ const store = createStore({
     
     async initializeAuth({ commit }) {
       try {
+        console.log('Auth 초기화 시작...')
+        
         if (authService.isAuthenticated()) {
           const user = authService.getCurrentUser()
           const menus = authService.getAvailableMenus()
@@ -76,8 +78,10 @@ const store = createStore({
           commit('SET_AVAILABLE_MENUS', menus)
           
           return { success: true }
+        } else {
+          console.log('Auth 초기화 - 인증되지 않은 사용자')
+          return { success: false }
         }
-        return { success: false }
       } catch (error) {
         console.error('Initialize auth error:', error)
         commit('CLEAR_USER')
@@ -104,12 +108,23 @@ const store = createStore({
     isAuthenticated: (state) => state.isAuthenticated,
     availableMenus: (state) => state.availableMenus,
     isAdmin: (state) => {
+      // state.user 체크 추가
       if (!state.user) return false
-      return authService.isAdmin()
+      try {
+        return authService.isAdmin()
+      } catch (error) {
+        console.error('isAdmin getter error:', error)
+        return false
+      }
     },
     userRole: (state) => {
       if (!state.user) return null
-      return authService.getUserRole()
+      try {
+        return authService.getUserRole()
+      } catch (error) {
+        console.error('userRole getter error:', error)
+        return null
+      }
     }
   }
 })

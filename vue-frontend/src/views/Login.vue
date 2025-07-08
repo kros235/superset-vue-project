@@ -1,52 +1,27 @@
 <template>
-  <div :style="{
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    minHeight: '100vh',
-    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
-  }">
-    <a-card
-      :style="{
-        width: '400px',
-        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-        borderRadius: '8px'
-      }"
-    >
-      <template #title>
-        <div style="text-align: center">
-          <h2 style="margin: 0; color: #1890ff">
-            Superset Dashboard
-          </h2>
-          <p style="margin: 8px 0 0 0; color: #666">
-            Apache Superset과 연동된 Vue.js 대시보드
-          </p>
-        </div>
-      </template>
-
-      <a-alert
-        v-if="error"
-        :message="error"
-        type="error"
-        show-icon
-        style="margin-bottom: 16px"
-      />
+  <div class="login-container">
+    <div class="login-box">
+      <div class="login-header">
+        <h2>Superset Dashboard</h2>
+        <p>Apache Superset과 연동된 Vue.js 대시보드</p>
+      </div>
 
       <a-form
         ref="formRef"
         :model="formData"
-        :rules="rules"
         @finish="handleSubmit"
         layout="vertical"
+        class="login-form"
       >
         <a-form-item
           label="사용자명"
           name="username"
+          :rules="rules.username"
         >
-          <a-input
-            v-model:value="formData.username"
+          <a-input 
+            v-model:value="formData.username" 
+            placeholder="admin"
             size="large"
-            placeholder="사용자명을 입력하세요"
           >
             <template #prefix>
               <UserOutlined />
@@ -57,11 +32,12 @@
         <a-form-item
           label="비밀번호"
           name="password"
+          :rules="rules.password"
         >
-          <a-input-password
-            v-model:value="formData.password"
+          <a-input-password 
+            v-model:value="formData.password" 
+            placeholder="비밀번호"
             size="large"
-            placeholder="비밀번호를 입력하세요"
           >
             <template #prefix>
               <LockOutlined />
@@ -69,53 +45,55 @@
           </a-input-password>
         </a-form-item>
 
-        <a-form-item style="margin-bottom: 8px">
-          <a-button
-            type="primary"
-            html-type="submit"
+        <a-form-item>
+          <a-button 
+            type="primary" 
+            html-type="submit" 
             :loading="loading"
-            block
             size="large"
-            :style="{ borderRadius: '4px' }"
+            block
           >
-            <a-spin v-if="loading" size="small" />
-            <span v-else>로그인</span>
+            {{ loading ? '로그인 중...' : '로그인' }}
           </a-button>
         </a-form-item>
 
-        <a-form-item style="margin-bottom: 0">
-          <a-button
-            type="link"
-            block
+        <a-form-item>
+          <a-button 
+            type="dashed" 
             @click="handleQuickLogin"
-            :style="{ padding: 0, height: 'auto' }"
+            size="large"
+            block
           >
-            개발용 관리자 로그인 (admin/admin)
+            빠른 로그인 (admin/admin)
           </a-button>
         </a-form-item>
       </a-form>
 
-      <div :style="{
-        marginTop: '24px',
-        padding: '16px',
-        background: '#f5f5f5',
-        borderRadius: '4px',
-        fontSize: '12px',
-        color: '#666'
-      }">
-        <h4 style="margin: 0 0 8px 0; fontSize: 13px">기본 계정 정보:</h4>
-        <div>관리자: admin / admin</div>
-        <div style="margin-top: 8px">
-          <strong>주요 기능:</strong>
-          <ul style="margin: 4px 0 0 16px; padding: 0">
+      <!-- 오류 메시지 -->
+      <a-alert
+        v-if="error"
+        :message="error"
+        type="error"
+        show-icon
+        closable
+        @close="error = ''"
+        style="margin-top: 16px;"
+      />
+
+      <!-- 계정 정보 -->
+      <a-card title="기본 계정 정보" size="small" style="margin-top: 16px;">
+        <div style="font-size: 12px; color: #666;">
+          <div><strong>관리자:</strong> admin / admin</div>
+          <div style="margin-top: 8px;"><strong>주요 기능:</strong></div>
+          <ul style="margin: 4px 0 0 16px; padding: 0;">
             <li>데이터 소스 관리</li>
             <li>차트 및 대시보드 생성</li>
             <li>사용자 권한 관리</li>
             <li>실시간 데이터 시각화</li>
           </ul>
         </div>
-      </div>
-    </a-card>
+      </a-card>
+    </div>
   </div>
 </template>
 
@@ -133,7 +111,7 @@ export default defineComponent({
     UserOutlined,
     LockOutlined
   },
-  setup () {
+  setup() {
     const store = useStore()
     const router = useRouter()
 
@@ -142,8 +120,8 @@ export default defineComponent({
     const error = ref('')
 
     const formData = ref({
-      username: '',
-      password: ''
+      username: 'admin',
+      password: 'admin'
     })
 
     const rules = {
@@ -160,6 +138,8 @@ export default defineComponent({
       error.value = ''
 
       try {
+        console.log('로그인 시도:', values.username)
+        
         const result = await store.dispatch('login', {
           username: values.username,
           password: values.password
@@ -167,9 +147,11 @@ export default defineComponent({
 
         if (result.success) {
           message.success('로그인에 성공했습니다!')
+          console.log('로그인 성공, 대시보드로 이동')
           router.push('/')
         } else {
-          error.value = result.message
+          error.value = result.message || '로그인에 실패했습니다.'
+          console.error('로그인 실패:', result.message)
         }
       } catch (err) {
         error.value = '로그인 중 오류가 발생했습니다.'
@@ -179,14 +161,23 @@ export default defineComponent({
       }
     }
 
-    const handleQuickLogin = () => {
+    const handleQuickLogin = async () => {
       formData.value.username = 'admin'
       formData.value.password = 'admin'
+      
+      // 폼 제출
+      try {
+        await formRef.value.validateFields()
+        await handleSubmit(formData.value)
+      } catch (error) {
+        console.error('Quick login validation error:', error)
+      }
     }
 
     onMounted(() => {
       // 이미 로그인된 사용자는 대시보드로 리디렉션
       if (authService.isAuthenticated()) {
+        console.log('이미 로그인된 사용자, 대시보드로 이동')
         router.push('/')
       }
     })
@@ -203,3 +194,60 @@ export default defineComponent({
   }
 })
 </script>
+
+<style scoped>
+.login-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 20px;
+}
+
+.login-box {
+  background: white;
+  padding: 40px;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 400px;
+}
+
+.login-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.login-header h2 {
+  color: #1890ff;
+  margin-bottom: 8px;
+  font-size: 28px;
+  font-weight: 600;
+}
+
+.login-header p {
+  color: #666;
+  margin: 0;
+  font-size: 14px;
+}
+
+.login-form {
+  margin-top: 24px;
+}
+
+/* 반응형 */
+@media (max-width: 768px) {
+  .login-container {
+    padding: 12px;
+  }
+  
+  .login-box {
+    padding: 24px;
+  }
+  
+  .login-header h2 {
+    font-size: 24px;
+  }
+}
+</style>
