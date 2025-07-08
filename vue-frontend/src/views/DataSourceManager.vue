@@ -53,35 +53,42 @@ const viewDatabaseTables = async (database) => {
           }
           
           // 사용자 스키마가 없거나 테이블이 없는 경우 기본 테이블 제공
-          if (tables.length === 0) {
-            if (database.database_name.toLowerCase().includes('sample') || 
-                schemas.includes('sample_dashboard')) {
-              tables = [
-                { name: 'users', type: 'table', schema: 'sample_dashboard', database_id: database.id },
-                { name: 'sales', type: 'table', schema: 'sample_dashboard', database_id: database.id },
-                { name: 'web_traffic', type: 'table', schema: 'sample_dashboard', database_id: database.id },
-                { name: 'customer_satisfaction', type: 'table', schema: 'sample_dashboard', database_id: database.id }
-              ]
-            } else {
-              // 일반적인 테이블 구조 제안
-              tables = [
-                { name: '테이블을 수동으로 추가하세요', type: 'info', schema: '', database_id: database.id }
-              ]
-            }
-          }
-          
-        } catch (schemaError) {
-          console.log('스키마 조회 실패, 기본 정보 표시:', schemaError)
-          
-          // 기본 정보 표시
-          tables = [
-            { name: 'users', type: 'table', schema: 'sample_dashboard', database_id: database.id },
-            { name: 'sales', type: 'table', schema: 'sample_dashboard', database_id: database.id },
-            { name: 'web_traffic', type: 'table', schema: 'sample_dashboard', database_id: database.id },
-            { name: 'customer_satisfaction', type: 'table', schema: 'sample_dashboard', database_id: database.id }
-          ]
-        }
-        
+
+	if (tables.length === 0) {
+	  if (database.database_name.toLowerCase().includes('sample') || 
+	      schemas.includes('sample_dashboard')) {
+	    tables = [
+	      { name: 'users', type: 'table', schema: 'sample_dashboard', database_id: database.id },
+	      { name: 'sales', type: 'table', schema: 'sample_dashboard', database_id: database.id },
+	      { name: 'web_traffic', type: 'table', schema: 'sample_dashboard', database_id: database.id },
+	      { name: 'customer_satisfaction', type: 'table', schema: 'sample_dashboard', database_id: database.id },
+	      // 새로 추가되는 기본 테스트 테이블
+	      { name: 'Default_Test_Fail_Table', type: 'table', schema: 'sample_dashboard', database_id: database.id }
+	    ]
+	  } else {
+	    // 일반적인 테이블 구조 제안
+	    tables = [
+	      { name: 'Default_Test_Fail_Table', type: 'table', schema: '', database_id: database.id },
+	      { name: '테이블을 수동으로 추가하세요', type: 'info', schema: '', database_id: database.id }
+	    ]
+	  }
+	}
+	
+	// 그리고 catch 블록에서의 기본 정보 표시 부분도 수정
+	} catch (schemaError) {
+	  console.log('스키마 조회 실패, 기본 정보 표시:', schemaError)
+	  
+	  // 기본 정보 표시
+	  tables = [
+	    { name: 'users', type: 'table', schema: 'sample_dashboard', database_id: database.id },
+	    { name: 'sales', type: 'table', schema: 'sample_dashboard', database_id: database.id },
+	    { name: 'web_traffic', type: 'table', schema: 'sample_dashboard', database_id: database.id },
+	    { name: 'customer_satisfaction', type: 'table', schema: 'sample_dashboard', database_id: database.id },
+	    // 새로 추가되는 기본 테스트 테이블
+	    { name: 'Default_Test_Fail_Table', type: 'table', schema: 'sample_dashboard', database_id: database.id }
+	  ]
+	}
+	        
         tablesList.value = tables
         console.log('최종 테이블 목록:', tables)
         

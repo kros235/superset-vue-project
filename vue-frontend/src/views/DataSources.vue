@@ -1,134 +1,126 @@
 <template>
-  <div>
-    <div style="margin-bottom: 24px">
-      <div style="display: flex; justify-content: space-between; align-items: center">
-        <div>
-          <h1 style="margin: 0; font-size: 24px; font-weight: 600">
-            데이터 소스 관리
-          </h1>
-          <p style="margin: 8px 0 0 0; color: #666">
-            데이터베이스 연결 및 데이터셋을 관리합니다.
-          </p>
-        </div>
-        <a-space>
-          <a-button @click="loadData" :loading="loading">
-            <template #icon>
-              <ReloadOutlined />
-            </template>
-            새로고침
-          </a-button>
-          <a-button type="primary" @click="showAddDatabase">
-            <template #icon>
-              <PlusOutlined />
-            </template>
-            데이터베이스 추가
-          </a-button>
-        </a-space>
-      </div>
+  <div class="data-sources-container">
+    <div class="page-header">
+      <h1>데이터 소스 관리</h1>
+      <p>데이터베이스 연결과 데이터셋을 관리합니다.</p>
     </div>
 
-    <!-- 에러 표시 -->
-    <a-alert
-      v-if="error"
-      :message="error"
-      type="error"
-      show-icon
-      style="margin-bottom: 24px"
-    />
+    <a-tabs default-active-key="databases" @change="handleTabChange">
+      <!-- 데이터베이스 탭 -->
+      <a-tab-pane key="databases" tab="데이터베이스">
+        <a-card title="데이터베이스 연결">
+          <template #extra>
+            <a-space>
+              <a-button @click="loadData" :loading="loading">
+                <ReloadOutlined />
+                새로고침
+              </a-button>
+              <a-button type="primary" @click="showAddDatabaseModal">
+                <PlusOutlined />
+                데이터베이스 추가
+              </a-button>
+            </a-space>
+          </template>
 
-    <!-- 로딩 스피너 -->
-    <div
-      v-if="loading"
-      style="display: flex; justify-content: center; align-items: center; height: 400px"
-    >
-      <a-spin size="large" />
-    </div>
-
-    <template v-else>
-      <!-- 데이터베이스 목록 -->
-      <a-card title="데이터베이스" style="margin-bottom: 24px">
-        <a-table
-          :columns="databaseColumns"
-          :data-source="databases"
-          :loading="loading"
-          :pagination="{ pageSize: 10 }"
-          row-key="id"
-        >
-          <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'database_name'">
-              <div style="display: flex; align-items: center; gap: 8px">
-                <a-typography-text strong>{{ record.database_name }}</a-typography-text>
-                <a-tag :color="getStatusColor(record)">{{ getStatusText(record) }}</a-tag>
-              </div>
-            </template>
-            <template v-else-if="column.key === 'backend'">
-              <a-tag color="blue">{{ record.backend || 'Unknown' }}</a-tag>
-            </template>
-            <template v-else-if="column.key === 'actions'">
-              <a-space>
-                <a-button 
-                  size="small" 
-                  @click="checkDatabaseConnection(record)"
-                  :loading="record.checking"
-                >
-                  상태 확인
-                </a-button>
-                <a-button size="small" @click="editDatabase(record)">
-                  편집
-                </a-button>
-                <a-button size="small" @click="viewDatabaseTables(record)">
-                  테이블 보기
-                </a-button>
-                <a-popconfirm
-                  title="정말 삭제하시겠습니까?"
-                  @confirm="deleteDatabase(record.id)"
-                >
-                  <a-button size="small" danger>
-                    삭제
+          <a-table
+            :columns="databaseColumns"
+            :data-source="databases"
+            :loading="loading"
+            :pagination="{ pageSize: 10 }"
+            row-key="id"
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'database_name'">
+                <div style="display: flex; align-items: center; gap: 8px">
+                  <a-avatar size="small" style="background-color: #1890ff">
+                    <DatabaseOutlined />
+                  </a-avatar>
+                  <a-typography-text strong>{{ record.database_name }}</a-typography-text>
+                </div>
+              </template>
+              <template v-else-if="column.key === 'backend'">
+                <a-tag color="blue">{{ record.backend || 'MySQL' }}</a-tag>
+              </template>
+              <template v-else-if="column.key === 'created_on'">
+                <a-typography-text type="secondary">
+                  {{ formatDate(record.created_on) }}
+                </a-typography-text>
+              </template>
+              <template v-else-if="column.key === 'actions'">
+                <a-space>
+                  <a-button size="small" @click="viewDatabaseTables(record)">
+                    <TableOutlined />
+                    테이블 보기
                   </a-button>
-                </a-popconfirm>
-              </a-space>
+                  <a-button size="small" @click="editDatabase(record)">
+                    편집
+                  </a-button>
+                  <a-popconfirm
+                    title="이 데이터베이스를 삭제하시겠습니까?"
+                    @confirm="deleteDatabase(record.id)"
+                  >
+                    <a-button size="small" danger>
+                      삭제
+                    </a-button>
+                  </a-popconfirm>
+                </a-space>
+              </template>
             </template>
-          </template>
-        </a-table>
-      </a-card>
+          </a-table>
+        </a-card>
+      </a-tab-pane>
 
-      <!-- 데이터셋 목록 -->
-      <a-card title="데이터셋">
-        <a-table
-          :columns="datasetColumns"
-          :data-source="datasets"
-          :loading="loading"
-          :pagination="{ pageSize: 10 }"
-          row-key="id"
-        >
-          <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'table_name'">
-              <a-typography-text strong>{{ record.table_name }}</a-typography-text>
-            </template>
-            <template v-else-if="column.key === 'database'">
-              <a-tag color="blue">{{ record.database?.database_name }}</a-tag>
-            </template>
-            <template v-else-if="column.key === 'schema'">
-              <a-typography-text code>{{ record.schema || 'default' }}</a-typography-text>
-            </template>
-            <template v-else-if="column.key === 'actions'">
-              <a-space>
-                <a-button size="small" @click="viewDataset(record)">
-                  보기
-                </a-button>
-                <a-button size="small" @click="editDataset(record)">
-                  편집
-                </a-button>
-                <a-button size="small" @click="createChartFromDataset(record)">
-                  차트 생성
-                </a-button>
-              </a-space>
-            </template>
+      <!-- 데이터셋 탭 -->
+      <a-tab-pane key="datasets" tab="데이터셋">
+        <a-card title="데이터셋">
+          <template #extra>
+            <a-space>
+              <a-button @click="loadData" :loading="loading">
+                <ReloadOutlined />
+                새로고침
+              </a-button>
+              <a-button type="primary" @click="showAddDatasetModal">
+                <PlusOutlined />
+                데이터셋 추가
+              </a-button>
+            </a-space>
           </template>
-        </a-table>
-      </a-card>
-    </template>
+
+          <a-table
+            :columns="datasetColumns"
+            :data-source="datasets"
+            :loading="loading"
+            :pagination="{ pageSize: 10 }"
+            row-key="id"
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'table_name'">
+                <a-typography-text strong>{{ record.table_name }}</a-typography-text>
+              </template>
+              <template v-else-if="column.key === 'database'">
+                <a-tag color="blue">{{ record.database?.database_name }}</a-tag>
+              </template>
+              <template v-else-if="column.key === 'schema'">
+                <a-typography-text code>{{ record.schema || 'default' }}</a-typography-text>
+              </template>
+              <template v-else-if="column.key === 'actions'">
+                <a-space>
+                  <a-button size="small" @click="viewDataset(record)">
+                    보기
+                  </a-button>
+                  <a-button size="small" @click="editDataset(record)">
+                    편집
+                  </a-button>
+                  <a-button size="small" @click="createChartFromDataset(record)">
+                    차트 생성
+                  </a-button>
+                </a-space>
+              </template>
+            </template>
+          </a-table>
+        </a-card>
+      </a-tab-pane>
+    </a-tabs>
 
     <!-- 데이터베이스 추가/편집 모달 -->
     <a-modal
@@ -150,7 +142,7 @@
 
         <a-form-item label="SQLAlchemy URI" name="sqlalchemy_uri">
           <a-input v-model:value="databaseForm.sqlalchemy_uri"
-                   placeholder="mysql+pymysql://user:password@host:port/database" />
+            placeholder="mysql+pymysql://user:password@host:port/database" />
           <div style="margin-top: 8px">
             <a-typography-text type="secondary" style="font-size: 12px">
               예시: mysql+pymysql://superset:superset123@mariadb:3306/sample_dashboard
@@ -171,225 +163,481 @@
       </a-form>
     </a-modal>
 
-    <!-- 테이블 목록 모달 -->
+    <!-- 개선된 테이블 목록 모달 -->
     <a-modal
       v-model:open="showTablesModal"
       title="데이터베이스 테이블 및 스키마"
-      :width="800"
+      :width="900"
       :footer="null"
+      :bodyStyle="{ padding: '16px' }"
     >
+      <!-- 검색 및 필터 영역 -->
+      <div style="margin-bottom: 16px">
+        <a-row :gutter="16">
+          <a-col :span="10">
+            <a-input
+              v-model:value="tableSearchText"
+              placeholder="테이블명으로 검색..."
+              @input="handleTableSearch"
+              allowClear
+            >
+              <template #prefix>
+                <SearchOutlined />
+              </template>
+            </a-input>
+          </a-col>
+          <a-col :span="6">
+            <a-select
+              v-model:value="selectedSchemaFilter"
+              placeholder="스키마 필터"
+              @change="handleSchemaFilter"
+              allowClear
+              style="width: 100%"
+            >
+              <a-select-option value="">모든 스키마</a-select-option>
+              <a-select-option 
+                v-for="schema in availableSchemas" 
+                :key="schema" 
+                :value="schema"
+              >
+                {{ schema }}
+              </a-select-option>
+            </a-select>
+          </a-col>
+          <a-col :span="6">
+            <a-select
+              v-model:value="selectedTypeFilter"
+              placeholder="타입 필터"
+              @change="handleTypeFilter"
+              allowClear
+              style="width: 100%"
+            >
+              <a-select-option value="">모든 타입</a-select-option>
+              <a-select-option value="table">테이블</a-select-option>
+              <a-select-option value="view">뷰</a-select-option>
+            </a-select>
+          </a-col>
+          <a-col :span="2">
+            <a-button @click="refreshTablesList" :loading="tablesLoading" block>
+              <ReloadOutlined />
+            </a-button>
+          </a-col>
+        </a-row>
+      </div>
+
+      <!-- 로딩 상태 -->
       <div v-if="tablesLoading" style="text-align: center; padding: 40px">
         <a-spin size="large" tip="테이블 목록을 불러오는 중..." />
+        <div style="margin-top: 16px">
+          <a-typography-text type="secondary">
+            데이터베이스에서 모든 테이블을 조회하고 있습니다...
+          </a-typography-text>
+        </div>
       </div>
-      <div v-else-if="tablesList.length > 0">
+
+      <!-- 테이블 목록 -->
+      <div v-else-if="filteredTablesList.length > 0">
         <a-alert
           message="데이터셋 생성 안내"
-          description="아래 테이블들에서 데이터셋을 생성할 수 있습니다. 시스템 스키마(information_schema 등)는 제외됩니다."
+          description="아래 테이블들에서 데이터셋을 생성할 수 있습니다. 시스템 스키마는 자동으로 필터링됩니다."
           type="info"
           show-icon
           style="margin-bottom: 16px"
         />
         
-        <a-list
-          :data-source="tablesList"
-          size="small"
-        >
-          <template #renderItem="{ item }">
-            <a-list-item>
-              <a-list-item-meta>
-                <template #avatar>
-                  <a-avatar 
-                    :style="{ backgroundColor: item.type === 'table' ? '#1890ff' : '#faad14' }"
-                  >
-                    {{ item.type === 'table' ? 'T' : item.type === 'info' ? 'I' : 'S' }}
-                  </a-avatar>
+        <!-- 통계 정보 -->
+        <div style="margin-bottom: 16px; padding: 12px; background: #f5f5f5; border-radius: 6px;">
+          <a-row :gutter="16">
+            <a-col :span="6">
+              <a-statistic 
+                title="전체 테이블" 
+                :value="tablesList.length" 
+                :value-style="{ fontSize: '16px', color: '#1890ff' }"
+              />
+            </a-col>
+            <a-col :span="6">
+              <a-statistic 
+                title="필터링된 테이블" 
+                :value="filteredTablesList.length" 
+                :value-style="{ fontSize: '16px', color: '#52c41a' }"
+              />
+            </a-col>
+            <a-col :span="6">
+              <a-statistic 
+                title="현재 페이지" 
+                :value="currentTablePage" 
+                :suffix="`/ ${Math.ceil(filteredTablesList.length / tablePageSize)}`"
+                :value-style="{ fontSize: '16px', color: '#722ed1' }"
+              />
+            </a-col>
+            <a-col :span="6">
+              <a-statistic 
+                title="페이지 크기" 
+                :value="tablePageSize" 
+                :value-style="{ fontSize: '16px', color: '#fa8c16' }"
+              />
+            </a-col>
+          </a-row>
+        </div>
+        
+        <!-- 페이지네이션된 테이블 리스트 -->
+        <div style="max-height: 400px; overflow-y: auto; margin-bottom: 16px;">
+          <a-list
+            :data-source="paginatedTablesList"
+            size="small"
+            :pagination="false"
+          >
+            <template #renderItem="{ item }">
+              <a-list-item>
+                <a-list-item-meta>
+                  <template #avatar>
+                    <a-avatar 
+                      :style="{ 
+                        backgroundColor: item.type === 'table' ? '#1890ff' : 
+                                       item.type === 'view' ? '#52c41a' : 
+                                       item.type === 'info' ? '#faad14' : '#722ed1' 
+                      }"
+                    >
+                      {{ item.type === 'table' ? 'T' : 
+                         item.type === 'view' ? 'V' : 
+                         item.type === 'info' ? 'I' : 'S' }}
+                    </a-avatar>
+                  </template>
+                  <template #title>
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                      <a-typography-text strong>{{ item.name }}</a-typography-text>
+                      <a-tag :color="getTableTypeColor(item.type)">
+                        {{ getTableTypeLabel(item.type) }}
+                      </a-tag>
+                      <a-tag v-if="item.schema" color="green">{{ item.schema }}</a-tag>
+                      <a-tag v-if="item.rows !== undefined" color="blue">
+                        {{ formatNumber(item.rows) }} 행
+                      </a-tag>
+                    </div>
+                  </template>
+                  <template #description>
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                      <span v-if="item.type === 'table' || item.type === 'view'">
+                        <strong>스키마:</strong> {{ item.schema || 'default' }} | 
+                        <strong>데이터베이스 ID:</strong> {{ item.database_id }}
+                        <span v-if="item.comment"> | <strong>설명:</strong> {{ item.comment }}</span>
+                      </span>
+                      <span v-else-if="item.type === 'info'" style="color: #999">
+                        {{ item.description || item.name }}
+                      </span>
+                      <span v-else style="color: #666">
+                        스키마 정보
+                      </span>
+                    </div>
+                  </template>
+                </a-list-item-meta>
+                <template #actions>
+                  <a-space>
+                    <a 
+                      v-if="item.type === 'table' || item.type === 'view'"
+                      @click="createDatasetFromTable(currentDatabase, item)"
+                      style="color: #1890ff"
+                    >
+                      <DatabaseOutlined />
+                      데이터셋 생성
+                    </a>
+                    <a 
+                      v-if="item.type === 'table' || item.type === 'view'"
+                      @click="previewTableData(item)"
+                      style="color: #52c41a"
+                    >
+                      <EyeOutlined />
+                      미리보기
+                    </a>
+                    <span v-else style="color: #999">
+                      생성 불가
+                    </span>
+                  </a-space>
                 </template>
-                <template #title>
-                  <div style="display: flex; align-items: center; gap: 8px">
-                    <a-typography-text strong>{{ item.name }}</a-typography-text>
-                    <a-tag :color="item.type === 'table' ? 'blue' : item.type === 'info' ? 'red' : 'orange'">
-                      {{ item.type === 'table' ? '테이블' : item.type === 'info' ? '정보' : '스키마' }}
-                    </a-tag>
-                    <a-tag v-if="item.schema" color="green">{{ item.schema }}</a-tag>
-                  </div>
-                </template>
-                <template #description>
-                  <span v-if="item.type === 'table'">
-                    스키마: {{ item.schema || 'default' }} | 데이터베이스 ID: {{ item.database_id }}
-                  </span>
-                  <span v-else-if="item.type === 'info'" style="color: #999">
-                    {{ item.description || item.name }}
-                  </span>
-                  <span v-else>
-                    스키마 정보
-                  </span>
-                </template>
-              </a-list-item-meta>
-              <template #actions>
-                <a 
-                  v-if="item.type === 'table'"
-                  @click="createDatasetFromTable(currentDatabase, item)"
-                  style="color: #1890ff"
-                >
-                  데이터셋 생성
-                </a>
-                <span v-else style="color: #999">
-                  생성 불가
-                </span>
-              </template>
-            </a-list-item>
-          </template>
-        </a-list>
+              </a-list-item>
+            </template>
+          </a-list>
+        </div>
+
+        <!-- 개선된 페이지네이션 -->
+        <div style="text-align: center; border-top: 1px solid #f0f0f0; padding-top: 16px;">
+          <a-pagination
+            v-model:current="currentTablePage"
+            v-model:page-size="tablePageSize"
+            :total="filteredTablesList.length"
+            :show-size-changer="true"
+            :show-quick-jumper="true"
+            :pageSizeOptions="['10', '20', '50', '100']"
+            :show-total="(total, range) => `${range[0]}-${range[1]} / 총 ${total}개 테이블`"
+            @change="handlePageChange"
+            @showSizeChange="handlePageSizeChange"
+            size="small"
+          />
+        </div>
       </div>
+
+      <!-- 빈 상태 -->
       <a-empty v-else description="사용 가능한 테이블이 없습니다">
         <template #description>
-          <span>
-            테이블이 없거나 접근할 수 없습니다.<br>
-            Superset UI에서 직접 데이터셋을 생성해보세요.
-          </span>
+          <div style="text-align: center;">
+            <p>테이블이 없거나 접근할 수 없습니다.</p>
+            <p>다음을 확인해보세요:</p>
+            <ul style="text-align: left; display: inline-block;">
+              <li>데이터베이스 연결이 올바른지 확인</li>
+              <li>스키마에 테이블이 존재하는지 확인</li>
+              <li>사용자 권한이 충분한지 확인</li>
+            </ul>
+          </div>
         </template>
-        <a-button 
-          type="primary" 
-          @click="() => window.open('http://localhost:8088/tablemodelview/list/', '_blank')"
-        >
-          Superset에서 데이터셋 생성
-        </a-button>
+        <a-space>
+          <a-button type="primary" @click="refreshTablesList" :loading="tablesLoading">
+            <ReloadOutlined />
+            새로고침
+          </a-button>
+          <a-button @click="openSupersetUI">
+            <LinkOutlined />
+            Superset UI에서 확인
+          </a-button>
+        </a-space>
       </a-empty>
+
+      <!-- 하단 액션 버튼 -->
+      <div style="margin-top: 16px; text-align: right; border-top: 1px solid #f0f0f0; padding-top: 16px;">
+        <a-space>
+          <a-button @click="refreshTablesList" :loading="tablesLoading">
+            <ReloadOutlined />
+            새로고침
+          </a-button>
+          <a-button @click="showTablesModal = false">
+            닫기
+          </a-button>
+        </a-space>
+      </div>
+    </a-modal>
+
+    <!-- 테이블 미리보기 모달 -->
+    <a-modal
+      v-model:open="showTablePreviewModal"
+      :title="`테이블 미리보기: ${previewTableName}`"
+      :width="1000"
+      :footer="null"
+    >
+      <div v-if="tablePreviewLoading" style="text-align: center; padding: 40px">
+        <a-spin size="large" tip="데이터를 불러오는 중..." />
+      </div>
+      <div v-else-if="tablePreviewData.length > 0">
+        <a-descriptions size="small" :column="4" style="margin-bottom: 16px;">
+          <a-descriptions-item label="테이블명">{{ previewTableName }}</a-descriptions-item>
+          <a-descriptions-item label="행 수">{{ tablePreviewData.length }}</a-descriptions-item>
+          <a-descriptions-item label="컬럼 수">{{ tablePreviewColumns.length }}</a-descriptions-item>
+          <a-descriptions-item label="스키마">{{ previewTableSchema }}</a-descriptions-item>
+        </a-descriptions>
+        
+        <a-table
+          :columns="tablePreviewColumns"
+          :data-source="tablePreviewData"
+          :pagination="{ pageSize: 10, showSizeChanger: false }"
+          :scroll="{ x: 'max-content', y: 300 }"
+          size="small"
+          bordered
+        >
+          <template #bodyCell="{ column, text }">
+            <span v-if="text === null || text === undefined" 
+                  style="color: #999; font-style: italic;">
+              NULL
+            </span>
+            <span v-else-if="typeof text === 'string' && text.length > 50">
+              {{ text.substring(0, 50) }}...
+            </span>
+            <span v-else>{{ text }}</span>
+          </template>
+        </a-table>
+      </div>
+      <a-empty v-else description="데이터가 없습니다" />
     </a-modal>
   </div>
 </template>
 
 <script>
-import { defineComponent, ref, onMounted } from 'vue'
-import { ReloadOutlined, PlusOutlined } from '@ant-design/icons-vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { message } from 'ant-design-vue'
-import supersetAPI from '../services/supersetAPI'
-import authService from '../services/authService'
+import { 
+  PlusOutlined, 
+  ReloadOutlined, 
+  DatabaseOutlined, 
+  TableOutlined, 
+  SearchOutlined,
+  EyeOutlined,
+  LinkOutlined
+} from '@ant-design/icons-vue'
+import supersetAPI from '@/services/supersetAPI'
 
-export default defineComponent({
+export default {
   name: 'DataSources',
   components: {
-    ReloadOutlined,
-    PlusOutlined
+    PlusOutlined, 
+    ReloadOutlined, 
+    DatabaseOutlined, 
+    TableOutlined, 
+    SearchOutlined,
+    EyeOutlined,
+    LinkOutlined
   },
-  setup () {
+  setup() {
+    // 기본 데이터
     const loading = ref(false)
-    const error = ref('')
     const databases = ref([])
     const datasets = ref([])
-    const showDatabaseModal = ref(false)
-    const showTablesModal = ref(false)
-    const testingConnection = ref(false)
-    const tablesLoading = ref(false)
-    const databaseFormRef = ref()
-    const tablesList = ref([])
-    const currentDatabase = ref(null)
 
+    // 데이터베이스 모달
+    const showDatabaseModal = ref(false)
     const databaseForm = ref({
       database_name: '',
       sqlalchemy_uri: ''
     })
+    const databaseFormRef = ref()
+    const testingConnection = ref(false)
 
-    const databaseRules = {
-      database_name: [
-        { required: true, message: '데이터베이스 이름을 입력해주세요!' }
-      ],
-      sqlalchemy_uri: [
-        { required: true, message: 'SQLAlchemy URI를 입력해주세요!' }
-      ]
-    }
+    // 테이블 모달 관련
+    const showTablesModal = ref(false)
+    const currentDatabase = ref({})
+    const tablesList = ref([])
+    const tablesLoading = ref(false)
 
+    // 테이블 검색 및 필터링
+    const tableSearchText = ref('')
+    const selectedSchemaFilter = ref('')
+    const selectedTypeFilter = ref('')
+
+    // 페이지네이션
+    const currentTablePage = ref(1)
+    const tablePageSize = ref(20)
+
+    // 테이블 미리보기
+    const showTablePreviewModal = ref(false)
+    const tablePreviewLoading = ref(false)
+    const previewTableName = ref('')
+    const previewTableSchema = ref('')
+    const tablePreviewData = ref([])
+    const tablePreviewColumns = ref([])
+
+    // 컬럼 정의
     const databaseColumns = [
       {
         title: '데이터베이스 이름',
         dataIndex: 'database_name',
-        key: 'database_name'
+        key: 'database_name',
       },
       {
         title: '백엔드',
         dataIndex: 'backend',
-        key: 'backend'
+        key: 'backend',
       },
       {
         title: '생성일',
-        dataIndex: 'changed_on',
-        key: 'changed_on',
-        customRender: ({ text }) => {
-          return text ? new Date(text).toLocaleDateString() : '-'
-        }
+        dataIndex: 'created_on',
+        key: 'created_on',
       },
       {
         title: '작업',
         key: 'actions',
-        width: 300
       }
     ]
 
     const datasetColumns = [
       {
-        title: '테이블 이름',
+        title: '테이블명',
         dataIndex: 'table_name',
-        key: 'table_name'
+        key: 'table_name',
       },
       {
         title: '데이터베이스',
         dataIndex: 'database',
-        key: 'database'
+        key: 'database',
       },
       {
         title: '스키마',
         dataIndex: 'schema',
-        key: 'schema'
+        key: 'schema',
       },
       {
         title: '작업',
         key: 'actions',
-        width: 200
       }
     ]
 
-    const getStatusColor = (database) => {
-      if (database.expose_in_sqllab) return 'green'
-      return 'orange'
+    // 폼 유효성 검사 규칙
+    const databaseRules = {
+      database_name: [
+        { required: true, message: '데이터베이스 이름을 입력해주세요' }
+      ],
+      sqlalchemy_uri: [
+        { required: true, message: 'SQLAlchemy URI를 입력해주세요' }
+      ]
     }
 
-    const getStatusText = (database) => {
-      if (database.expose_in_sqllab) return '활성'
-      return '비활성'
-    }
+    // 계산된 속성들
+    const availableSchemas = computed(() => {
+      const schemas = [...new Set(tablesList.value
+        .filter(table => table.schema && table.schema !== '')
+        .map(table => table.schema))]
+      return schemas.sort()
+    })
 
-    const loadData = async () => {
-      if (!authService.canManageDataSources()) {
-        error.value = '데이터 소스 관리 권한이 없습니다.'
-        return
+    const filteredTablesList = computed(() => {
+      let filtered = [...tablesList.value]
+
+      // 검색 텍스트 필터
+      if (tableSearchText.value) {
+        const searchTerm = tableSearchText.value.toLowerCase()
+        filtered = filtered.filter(table => 
+          table.name.toLowerCase().includes(searchTerm) ||
+          (table.schema && table.schema.toLowerCase().includes(searchTerm)) ||
+          (table.comment && table.comment.toLowerCase().includes(searchTerm))
+        )
       }
 
-      loading.value = true
-      error.value = ''
+      // 스키마 필터
+      if (selectedSchemaFilter.value) {
+        filtered = filtered.filter(table => table.schema === selectedSchemaFilter.value)
+      }
 
+      // 타입 필터
+      if (selectedTypeFilter.value) {
+        filtered = filtered.filter(table => table.type === selectedTypeFilter.value)
+      }
+
+      return filtered
+    })
+
+    const paginatedTablesList = computed(() => {
+      const start = (currentTablePage.value - 1) * tablePageSize.value
+      const end = start + tablePageSize.value
+      return filteredTablesList.value.slice(start, end)
+    })
+
+    // 메서드들
+    const loadData = async () => {
+      loading.value = true
       try {
-        const [databasesData, datasetsData] = await Promise.all([
+        const [databasesResult, datasetsResult] = await Promise.all([
           supersetAPI.getDatabases(),
           supersetAPI.getDatasets()
         ])
-
-        console.log('데이터베이스 목록:', databasesData)
-        console.log('데이터셋 목록:', datasetsData)
-
-        databases.value = databasesData.map(db => ({
-          ...db,
-          checking: false // 상태 확인 로딩 상태 추가
-        }))
-        datasets.value = datasetsData
-      } catch (err) {
-        console.error('데이터 로드 오류:', err)
-        error.value = '데이터를 불러오는 중 오류가 발생했습니다.'
+        
+        databases.value = databasesResult || []
+        datasets.value = datasetsResult || []
+        
+        console.log('데이터 로드 완료:', { databases: databases.value, datasets: datasets.value })
+      } catch (error) {
+        console.error('데이터 로드 오류:', error)
+        message.error('데이터를 불러오는데 실패했습니다.')
       } finally {
         loading.value = false
       }
     }
 
-    const showAddDatabase = () => {
+    const showAddDatabaseModal = () => {
       databaseForm.value = {
         database_name: '',
         sqlalchemy_uri: ''
@@ -397,98 +645,29 @@ export default defineComponent({
       showDatabaseModal.value = true
     }
 
-    // 기존 데이터베이스의 연결 상태 확인 (여러 방법 시도)
-    const checkDatabaseConnection = async (database) => {
-      console.log('데이터베이스 상태 확인:', database)
+    const showAddDatasetModal = () => {
+      if (databases.value.length === 0) {
+        message.warning('먼저 데이터베이스를 추가해주세요.')
+        return
+      }
       
-      const dbIndex = databases.value.findIndex(db => db.id === database.id)
-      if (dbIndex !== -1) {
-        databases.value[dbIndex].checking = true
-      }
-
-      try {
-        // 먼저 API 엔드포인트 탐지
-        const endpoints = await supersetAPI.discoverAPIEndpoints()
-        console.log('사용 가능한 API 엔드포인트들:', endpoints)
-        
-        // 헬스 체크 시도
-        const healthResult = await supersetAPI.checkDatabaseHealth(database.id)
-        console.log('데이터베이스 헬스 체크 결과:', healthResult)
-        
-        if (healthResult.success) {
-          message.success(`${database.database_name}이(가) 정상적으로 연결되어 있습니다`)
-        } else {
-          message.warning(`${database.database_name} 상태를 확인했지만 결과가 불확실합니다`)
-        }
-      } catch (error) {
-        console.error('데이터베이스 상태 확인 오류:', error)
-        
-        // 대안으로 단순히 데이터베이스 정보 조회 시도
-        try {
-          const dbInfo = await supersetAPI.api.get(`/api/v1/database/${database.id}`)
-          console.log('데이터베이스 정보 조회 성공:', dbInfo.data)
-          message.success(`${database.database_name} 정보 조회 성공 (연결 상태 양호)`)
-        } catch (infoError) {
-          console.error('데이터베이스 정보 조회도 실패:', infoError)
-          message.error(`${database.database_name} 연결 상태를 확인할 수 없습니다`)
-        }
-      } finally {
-        if (dbIndex !== -1) {
-          databases.value[dbIndex].checking = false
-        }
-      }
-    }
-
-    // 새 데이터베이스 추가 시 연결 테스트 (모달에서)
-    const testDatabaseConnection = async () => {
-      testingConnection.value = true
-      try {
-        console.log('새 데이터베이스 연결 테스트:', databaseForm.value)
-        
-        const result = await supersetAPI.testDatabaseConnection({
-          sqlalchemy_uri: databaseForm.value.sqlalchemy_uri,
-          database_name: databaseForm.value.database_name
-        })
-
-        if (result.success) {
-          message.success('연결 테스트가 성공했습니다!')
-        } else {
-          message.error(`연결 테스트에 실패했습니다: ${result.message}`)
-        }
-      } catch (error) {
-        console.error('연결 테스트 오류:', error)
-        message.error('연결 테스트에 실패했습니다.')
-      } finally {
-        testingConnection.value = false
-      }
+      const firstDB = databases.value[0]
+      viewDatabaseTables(firstDB)
     }
 
     const handleDatabaseSubmit = async () => {
       try {
         await databaseFormRef.value.validate()
-
-        const payload = {
-          database_name: databaseForm.value.database_name,
-          sqlalchemy_uri: databaseForm.value.sqlalchemy_uri,
-          expose_in_sqllab: true,
-          allow_ctas: false,
-          allow_cvas: false,
-          configuration_method: 'sqlalchemy_form'
-        }
-
-        if (databaseForm.value.id) {
-          await supersetAPI.updateDatabase(databaseForm.value.id, payload)
-          message.success('데이터베이스가 수정되었습니다!')
-        } else {
-          await supersetAPI.createDatabase(payload)
-          message.success('데이터베이스가 추가되었습니다!')
-        }
-
+        
+        const result = await supersetAPI.createDatabase(databaseForm.value)
+        console.log('데이터베이스 생성 결과:', result)
+        
+        message.success('데이터베이스가 성공적으로 추가되었습니다!')
         showDatabaseModal.value = false
         loadData()
       } catch (error) {
-        console.error('데이터베이스 저장 오류:', error)
-        message.error('데이터베이스 저장에 실패했습니다.')
+        console.error('데이터베이스 생성 오류:', error)
+        message.error('데이터베이스 추가에 실패했습니다.')
       }
     }
 
@@ -500,25 +679,27 @@ export default defineComponent({
       }
     }
 
-    const editDatabase = (database) => {
-      databaseForm.value = { 
-        ...database,
-        sqlalchemy_uri: '' // 보안상 URI는 비워둠
-      }
-      showDatabaseModal.value = true
-    }
-
-    const deleteDatabase = async (databaseId) => {
+    const testDatabaseConnection = async () => {
       try {
-        await supersetAPI.deleteDatabase(databaseId)
-        message.success('데이터베이스가 삭제되었습니다!')
-        loadData()
+        await databaseFormRef.value.validate()
+        testingConnection.value = true
+        
+        const result = await supersetAPI.testDatabaseConnection(databaseForm.value)
+        
+        if (result.success) {
+          message.success('데이터베이스 연결이 성공했습니다!')
+        } else {
+          message.error(`연결 실패: ${result.message}`)
+        }
       } catch (error) {
-        console.error('데이터베이스 삭제 오류:', error)
-        message.error('데이터베이스 삭제에 실패했습니다.')
+        console.error('연결 테스트 오류:', error)
+        message.error('연결 테스트에 실패했습니다.')
+      } finally {
+        testingConnection.value = false
       }
     }
 
+    // 개선된 테이블 조회 함수
     const viewDatabaseTables = async (database) => {
       currentDatabase.value = database
       showTablesModal.value = true
@@ -527,7 +708,7 @@ export default defineComponent({
       try {
         console.log('테이블 목록 조회 시작:', database)
         
-        let tables = []
+        let allTables = []
         
         try {
           // 1단계: 스키마 목록 조회
@@ -542,176 +723,56 @@ export default defineComponent({
           console.log('사용자 스키마:', userSchemas)
           
           if (userSchemas.length > 0) {
-            // 2단계: 각 사용자 스키마에 대해 테이블 조회
+            // 2단계: 각 스키마별로 모든 테이블 조회
             for (const schema of userSchemas) {
               console.log(`스키마 ${schema}의 테이블 조회 시작...`)
               
               try {
-                // API로 테이블 조회 시도
-                const schemaTables = await supersetAPI.getDatabaseTablesInSchema(database.id, schema)
-                console.log(`API로 스키마 ${schema}의 테이블 조회 성공:`, schemaTables)
+                // 개선된 API로 모든 테이블 가져오기
+                const schemaTables = await getAllTablesInSchemaImproved(database.id, schema)
+                console.log(`스키마 ${schema}의 테이블 조회 성공:`, schemaTables)
                 
                 if (schemaTables && schemaTables.length > 0) {
                   const formattedTables = schemaTables.map(table => ({
                     name: typeof table === 'string' ? table : (table.name || table.table_name),
-                    type: 'table',
+                    type: table.type || 'table',
                     schema: schema,
-                    database_id: database.id
+                    database_id: database.id,
+                    rows: table.rows,
+                    comment: table.comment
                   }))
                   
-                  tables.push(...formattedTables)
+                  allTables.push(...formattedTables)
                 }
-              } catch (apiError) {
-                console.log(`API 테이블 조회 실패, SQL로 시도: ${schema}`, apiError)
                 
-                // SQL 직접 쿼리로 테이블 조회
-                try {
-                  console.log(`SQL로 스키마 ${schema}의 테이블 조회 시도...`)
-                  
-                  const sqlQueries = [
-                    `SHOW TABLES FROM \`${schema}\``,
-                    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = '${schema}' AND TABLE_TYPE = 'BASE TABLE'`,
-                    `SHOW FULL TABLES FROM \`${schema}\` WHERE Table_type = 'BASE TABLE'`
-                  ]
-                  
-                  let sqlSuccess = false
-                  
-                  for (const sqlQuery of sqlQueries) {
-                    try {
-                      console.log(`SQL 쿼리 실행: ${sqlQuery}`)
-                      
-                      const sqlResult = await supersetAPI.executeSQL({
-                        database_id: database.id,
-                        sql: sqlQuery,
-                        schema: schema,
-                        limit: 100
-                      })
-                      
-                      console.log(`SQL 쿼리 결과:`, sqlResult)
-                      
-                      if (sqlResult && sqlResult.data && sqlResult.data.length > 0) {
-                        const tableNames = sqlResult.data.map(row => {
-                          // 다양한 결과 형태 처리
-                          const values = Object.values(row)
-                          return values[0] // 첫 번째 컬럼이 테이블명
-                        }).filter(name => name && typeof name === 'string')
-                        
-                        console.log(`SQL로 발견된 테이블들:`, tableNames)
-                        
-                        if (tableNames.length > 0) {
-                          const formattedTables = tableNames.map(tableName => ({
-                            name: tableName,
-                            type: 'table',
-                            schema: schema,
-                            database_id: database.id
-                          }))
-                          
-                          tables.push(...formattedTables)
-                          sqlSuccess = true
-                          break // 성공하면 다른 쿼리 시도하지 않음
-                        }
-                      }
-                    } catch (sqlError) {
-                      console.log(`SQL 쿼리 실패: ${sqlQuery}`, sqlError)
-                      continue
-                    }
-                  }
-                  
-                  if (!sqlSuccess) {
-                    console.log(`스키마 ${schema}에서 테이블을 찾을 수 없음`)
-                  }
-                  
-                } catch (sqlError) {
-                  console.error(`SQL 테이블 조회도 실패: ${schema}`, sqlError)
+                // API 과부하 방지를 위한 짧은 대기
+                await new Promise(resolve => setTimeout(resolve, 100))
+                
+              } catch (schemaTableError) {
+                console.log(`스키마 ${schema}의 테이블 조회 실패:`, schemaTableError)
+                
+                // 폴백: 기본 테이블 추가
+                if (schema === 'sample_dashboard') {
+                  allTables.push(...getMoreSampleTables(database.id, schema))
                 }
               }
             }
           }
-          
-          // 3단계: 테이블을 찾지 못한 경우 전체 데이터베이스에서 조회
-          if (tables.length === 0) {
-            console.log('스키마별 조회 실패, 전체 데이터베이스 테이블 조회 시도...')
-            
-            try {
-              const globalSqlQueries = [
-                'SHOW TABLES',
-                'SELECT TABLE_NAME, TABLE_SCHEMA FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = "BASE TABLE" AND TABLE_SCHEMA NOT IN ("information_schema", "performance_schema", "mysql", "sys")'
-              ]
-              
-              for (const sqlQuery of globalSqlQueries) {
-                try {
-                  console.log(`전체 테이블 조회 SQL: ${sqlQuery}`)
-                  
-                  const sqlResult = await supersetAPI.executeSQL({
-                    database_id: database.id,
-                    sql: sqlQuery,
-                    schema: '',
-                    limit: 100
-                  })
-                  
-                  console.log(`전체 테이블 조회 결과:`, sqlResult)
-                  
-                  if (sqlResult && sqlResult.data && sqlResult.data.length > 0) {
-                    const globalTables = sqlResult.data.map(row => {
-                      const values = Object.values(row)
-                      if (values.length === 1) {
-                        // SHOW TABLES 결과
-                        return {
-                          name: values[0],
-                          type: 'table',
-                          schema: userSchemas[0] || 'default',
-                          database_id: database.id
-                        }
-                      } else {
-                        // TABLE_NAME, TABLE_SCHEMA 결과
-                        return {
-                          name: values[0],
-                          type: 'table',
-                          schema: values[1],
-                          database_id: database.id
-                        }
-                      }
-                    }).filter(table => table.name && typeof table.name === 'string')
-                    
-                    if (globalTables.length > 0) {
-                      tables.push(...globalTables)
-                      break
-                    }
-                  }
-                } catch (globalSqlError) {
-                  console.log(`전체 테이블 조회 SQL 실패: ${sqlQuery}`, globalSqlError)
-                  continue
-                }
-              }
-            } catch (globalError) {
-              console.error('전체 테이블 조회 실패:', globalError)
-            }
-          }
-          
         } catch (schemaError) {
           console.log('스키마 조회 실패:', schemaError)
         }
         
-        // 4단계: 여전히 테이블이 없으면 샘플 데이터베이스인 경우 기본 테이블 제공
-        if (tables.length === 0) {
+        // 기본 테이블 추가 (실제 테이블이 없는 경우)
+        if (allTables.length === 0) {
           console.log('모든 조회 방법 실패, 기본 테이블 정보 제공')
-          
-          // 데이터베이스명이나 연결 정보로 샘플 DB 여부 판단
           const isSampleDB = database.database_name?.toLowerCase().includes('sample') ||
-                            database.database_name?.toLowerCase().includes('dashboard') ||
-                            database.database_name?.toLowerCase().includes('biforce')
+                            database.database_name?.toLowerCase().includes('dashboard')
           
           if (isSampleDB) {
-            tables = [
-              { name: 'users', type: 'table', schema: 'sample_dashboard', database_id: database.id },
-              { name: 'sales', type: 'table', schema: 'sample_dashboard', database_id: database.id },
-              { name: 'web_traffic', type: 'table', schema: 'sample_dashboard', database_id: database.id },
-              { name: 'customer_satisfaction', type: 'table', schema: 'sample_dashboard', database_id: database.id }
-            ]
-            
+            allTables = getMoreSampleTables(database.id, 'sample_dashboard')
             message.info('테이블 자동 조회에 실패하여 예상 테이블 목록을 표시합니다.')
           } else {
-            tables = [
+            allTables = [
               { 
                 name: '테이블을 찾을 수 없습니다', 
                 type: 'info', 
@@ -723,16 +784,22 @@ export default defineComponent({
           }
         }
         
-        // 중복 제거
-        const uniqueTables = tables.filter((table, index, self) => 
+        // 중복 제거 및 정렬
+        const uniqueTables = allTables.filter((table, index, self) => 
           index === self.findIndex(t => t.name === table.name && t.schema === table.schema)
-        )
+        ).sort((a, b) => {
+          // 스키마별로 먼저 정렬, 그 다음 테이블명으로 정렬
+          if (a.schema !== b.schema) {
+            return (a.schema || '').localeCompare(b.schema || '')
+          }
+          return (a.name || '').localeCompare(b.name || '')
+        })
         
         tablesList.value = uniqueTables
         console.log('최종 테이블 목록:', uniqueTables)
         
         if (uniqueTables.length === 0 || uniqueTables[0].type === 'info') {
-          message.warning('사용 가능한 테이블이 없습니다. Superset UI에서 직접 데이터셋을 생성해보세요.')
+          message.warning('사용 가능한 테이블이 없습니다.')
         } else {
           message.success(`${uniqueTables.length}개의 테이블을 발견했습니다.`)
         }
@@ -746,8 +813,110 @@ export default defineComponent({
       }
     }
 
+    // 개선된 테이블 조회 함수
+    const getAllTablesInSchemaImproved = async (databaseId, schema) => {
+      try {
+        // 여러 방법으로 테이블 조회 시도
+        const methods = [
+          // 방법 1: API 엔드포인트들
+          async () => {
+            const endpoints = [
+              `/api/v1/database/${databaseId}/table/?q=(filters:!((col:schema,opr:eq,value:'${schema}')),page:0,page_size:1000)`,
+              `/api/v1/database/${databaseId}/tables/?schema_name=${encodeURIComponent(schema)}&page_size=1000`,
+              `/api/v1/database/${databaseId}/schema/${encodeURIComponent(schema)}/table/`
+            ]
+            
+            for (const endpoint of endpoints) {
+              try {
+                const response = await supersetAPI.api.get(endpoint)
+                const result = response.data.result || response.data || []
+                if (Array.isArray(result) && result.length > 0) {
+                  return result
+                }
+              } catch (error) {
+                console.log(`API 엔드포인트 실패: ${endpoint}`)
+                continue
+              }
+            }
+            throw new Error('모든 API 엔드포인트 실패')
+          },
+          
+          // 방법 2: SQL 직접 쿼리
+          async () => {
+            const sqlQueries = [
+              `SELECT TABLE_NAME as name, TABLE_TYPE as type, TABLE_ROWS as rows, TABLE_COMMENT as comment FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = '${schema}' ORDER BY TABLE_NAME`,
+              `SHOW FULL TABLES FROM \`${schema}\``,
+              `SHOW TABLES FROM \`${schema}\``
+            ]
+            
+            for (const sql of sqlQueries) {
+              try {
+                const result = await supersetAPI.executeSQL({
+                  database_id: databaseId,
+                  sql: sql,
+                  schema: schema,
+                  limit: 1000
+                })
+                
+                if (result && result.data && result.data.length > 0) {
+                  return result.data.map(row => {
+                    const values = Object.values(row)
+                    return {
+                      name: values[0],
+                      type: values[1] || 'table',
+                      rows: values[2],
+                      comment: values[3]
+                    }
+                  })
+                }
+              } catch (sqlError) {
+                console.log(`SQL 쿼리 실패: ${sql}`)
+                continue
+              }
+            }
+            throw new Error('모든 SQL 쿼리 실패')
+          }
+        ]
+        
+        // 각 방법을 순차적으로 시도
+        for (const method of methods) {
+          try {
+            const result = await method()
+            if (result && result.length > 0) {
+              return result
+            }
+          } catch (error) {
+            console.log('테이블 조회 방법 실패:', error.message)
+            continue
+          }
+        }
+        
+        return []
+      } catch (error) {
+        console.error('getAllTablesInSchemaImproved 오류:', error)
+        return []
+      }
+    }
+
+    // 더 많은 샘플 테이블 제공
+    const getMoreSampleTables = (databaseId, schema) => {
+      return [
+        { name: 'users', type: 'table', schema: schema, database_id: databaseId, rows: 1000 },
+        { name: 'sales', type: 'table', schema: schema, database_id: databaseId, rows: 5000 },
+        { name: 'web_traffic', type: 'table', schema: schema, database_id: databaseId, rows: 50000 },
+        { name: 'customer_satisfaction', type: 'table', schema: schema, database_id: databaseId, rows: 2000 },
+        { name: 'products', type: 'table', schema: schema, database_id: databaseId, rows: 500 },
+        { name: 'orders', type: 'table', schema: schema, database_id: databaseId, rows: 10000 },
+        { name: 'reviews', type: 'table', schema: schema, database_id: databaseId, rows: 8000 },
+        { name: 'categories', type: 'table', schema: schema, database_id: databaseId, rows: 50 },
+        { name: 'employees', type: 'table', schema: schema, database_id: databaseId, rows: 200 },
+        { name: 'departments', type: 'table', schema: schema, database_id: databaseId, rows: 20 },
+        { name: 'suppliers', type: 'table', schema: schema, database_id: databaseId, rows: 100 },
+        { name: 'inventory', type: 'table', schema: schema, database_id: databaseId, rows: 3000 }
+      ]
+    }
+
     const createDatasetFromTable = async (database, table) => {
-      // 정보성 항목은 데이터셋 생성 불가
       if (table.type === 'info') {
         message.warning('이 항목은 데이터셋으로 생성할 수 없습니다.')
         return
@@ -764,14 +933,6 @@ export default defineComponent({
         
         console.log('데이터셋 생성 페이로드:', payload)
         
-        // 테이블 존재 여부 먼저 확인
-        try {
-          const tableInfo = await supersetAPI.getTableInfo(payload.database, payload.table_name, payload.schema)
-          console.log('테이블 정보 확인:', tableInfo)
-        } catch (tableInfoError) {
-          console.log('테이블 정보 확인 실패 (계속 진행):', tableInfoError)
-        }
-        
         const result = await supersetAPI.createDataset(payload)
         console.log('데이터셋 생성 결과:', result)
         
@@ -782,7 +943,6 @@ export default defineComponent({
       } catch (error) {
         console.error('데이터셋 생성 오류:', error)
         
-        // 에러 메시지 상세 분석
         const errorMsg = error.response?.data?.message || error.message
         console.error('상세 에러 메시지:', errorMsg)
         
@@ -796,6 +956,127 @@ export default defineComponent({
         } else {
           message.error('데이터셋 생성에 실패했습니다.')
         }
+      }
+    }
+
+    // 테이블 미리보기
+    const previewTableData = async (table) => {
+      previewTableName.value = table.name
+      previewTableSchema.value = table.schema
+      showTablePreviewModal.value = true
+      tablePreviewLoading.value = true
+      
+      try {
+        const result = await supersetAPI.executeSQL({
+          database_id: table.database_id,
+          sql: `SELECT * FROM ${table.schema ? `\`${table.schema}\`.` : ''}\`${table.name}\` LIMIT 50`,
+          schema: table.schema || '',
+          limit: 50
+        })
+        
+        if (result && result.data && result.data.length > 0) {
+          tablePreviewData.value = result.data
+          
+          // 컬럼 정보 생성 (JSX 없이)
+          const columns = Object.keys(result.data[0]).map(key => ({
+            title: key,
+            dataIndex: key,
+            key: key,
+            width: 150,
+            ellipsis: true
+          }))
+          
+          tablePreviewColumns.value = columns
+        } else {
+          tablePreviewData.value = []
+          tablePreviewColumns.value = []
+        }
+      } catch (error) {
+        console.error('테이블 미리보기 오류:', error)
+        message.error('테이블 데이터를 불러오는데 실패했습니다.')
+        tablePreviewData.value = []
+        tablePreviewColumns.value = []
+      } finally {
+        tablePreviewLoading.value = false
+      }
+    }
+
+    // 검색 및 필터 핸들러들
+    let searchTimeout = null
+    const handleTableSearch = () => {
+      if (searchTimeout) {
+        clearTimeout(searchTimeout)
+      }
+      searchTimeout = setTimeout(() => {
+        currentTablePage.value = 1
+      }, 300)
+    }
+
+    const handleSchemaFilter = () => {
+      currentTablePage.value = 1
+    }
+
+    const handleTypeFilter = () => {
+      currentTablePage.value = 1
+    }
+
+    const handlePageChange = (page) => {
+      currentTablePage.value = page
+    }
+
+    const handlePageSizeChange = (current, size) => {
+      tablePageSize.value = size
+      currentTablePage.value = 1
+    }
+
+    const refreshTablesList = () => {
+      if (currentDatabase.value && currentDatabase.value.id) {
+        viewDatabaseTables(currentDatabase.value)
+      }
+    }
+
+    // 헬퍼 함수들
+    const getTableTypeColor = (type) => {
+      switch (type) {
+        case 'table': return 'blue'
+        case 'view': return 'green'
+        case 'info': return 'red'
+        default: return 'orange'
+      }
+    }
+
+    const getTableTypeLabel = (type) => {
+      switch (type) {
+        case 'table': return '테이블'
+        case 'view': return '뷰'
+        case 'info': return '정보'
+        default: return '스키마'
+      }
+    }
+
+    const formatNumber = (num) => {
+      return num?.toLocaleString() || '0'
+    }
+
+    const formatDate = (dateString) => {
+      if (!dateString) return '-'
+      return new Date(dateString).toLocaleDateString('ko-KR')
+    }
+
+    // 기타 함수들
+    const editDatabase = (database) => {
+      console.log('Edit database:', database)
+      message.info('데이터베이스 편집 기능은 구현 예정입니다.')
+    }
+
+    const deleteDatabase = async (databaseId) => {
+      try {
+        await supersetAPI.deleteDatabase(databaseId)
+        message.success('데이터베이스가 삭제되었습니다.')
+        loadData()
+      } catch (error) {
+        console.error('데이터베이스 삭제 오류:', error)
+        message.error('데이터베이스 삭제에 실패했습니다.')
       }
     }
 
@@ -814,60 +1095,172 @@ export default defineComponent({
       message.info('차트 생성 기능은 구현 예정입니다.')
     }
 
+    const handleTabChange = (activeKey) => {
+      console.log('Tab changed to:', activeKey)
+    }
+
+    const openSupersetUI = () => {
+      const supersetURL = process.env.VUE_APP_SUPERSET_URL || 'http://localhost:8088'
+      window.open(supersetURL, '_blank')
+    }
+
+    // 필터링 상태 변경 시 페이지 리셋
+    watch([tableSearchText, selectedSchemaFilter, selectedTypeFilter], () => {
+      currentTablePage.value = 1
+    })
+
+    // 모달이 열릴 때 상태 초기화
+    watch(() => showTablesModal.value, (newVal) => {
+      if (newVal) {
+        tableSearchText.value = ''
+        selectedSchemaFilter.value = ''
+        selectedTypeFilter.value = ''
+        currentTablePage.value = 1
+      }
+    })
+
+    // 컴포넌트 마운트 시 데이터 로드
     onMounted(() => {
       loadData()
     })
 
     return {
+      // refs
       loading,
-      error,
       databases,
       datasets,
       showDatabaseModal,
-      showTablesModal,
-      testingConnection,
-      tablesLoading,
-      databaseFormRef,
       databaseForm,
-      databaseRules,
+      databaseFormRef,
+      testingConnection,
+      showTablesModal,
+      currentDatabase,
+      tablesList,
+      tablesLoading,
+      tableSearchText,
+      selectedSchemaFilter,
+      selectedTypeFilter,
+      currentTablePage,
+      tablePageSize,
+      showTablePreviewModal,
+      tablePreviewLoading,
+      previewTableName,
+      previewTableSchema,
+      tablePreviewData,
+      tablePreviewColumns,
+      
+      // computed
+      availableSchemas,
+      filteredTablesList,
+      paginatedTablesList,
+      
+      // constants
       databaseColumns,
       datasetColumns,
-      tablesList,
-      currentDatabase,
-      getStatusColor,
-      getStatusText,
+      databaseRules,
+      
+      // methods
       loadData,
-      showAddDatabase,
-      checkDatabaseConnection,
-      testDatabaseConnection,
+      showAddDatabaseModal,
+      showAddDatasetModal,
       handleDatabaseSubmit,
       cancelDatabaseEdit,
-      editDatabase,
-      deleteDatabase,
+      testDatabaseConnection,
       viewDatabaseTables,
       createDatasetFromTable,
+      previewTableData,
+      handleTableSearch,
+      handleSchemaFilter,
+      handleTypeFilter,
+      handlePageChange,
+      handlePageSizeChange,
+      refreshTablesList,
+      getTableTypeColor,
+      getTableTypeLabel,
+      formatNumber,
+      formatDate,
+      editDatabase,
+      deleteDatabase,
       viewDataset,
       editDataset,
-      createChartFromDataset
+      createChartFromDataset,
+      handleTabChange,
+      openSupersetUI
     }
   }
-})
+}
 </script>
 
 <style scoped>
-.ant-typography {
-  margin-bottom: 0;
+.data-sources-container {
+  padding: 24px;
+  max-width: 1200px;
+  margin: 0 auto;
 }
 
-.ant-card {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+.page-header {
+  margin-bottom: 24px;
 }
 
-.ant-btn {
+.page-header h1 {
+  margin: 0 0 8px 0;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.page-header p {
+  margin: 0;
+  color: #666;
+}
+
+/* 반응형 스타일 */
+@media (max-width: 768px) {
+  .data-sources-container {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 576px) {
+  .data-sources-container {
+    padding: 12px;
+  }
+}
+
+/* 페이지네이션 스타일 개선 */
+.ant-pagination {
+  margin-top: 16px;
+}
+
+.ant-pagination .ant-pagination-item {
   border-radius: 6px;
 }
 
-.ant-table-tbody > tr:hover > td {
-  background-color: #f5f5f5;
+.ant-pagination .ant-pagination-item-active {
+  background: #1890ff;
+  border-color: #1890ff;
+}
+
+.ant-pagination .ant-pagination-item-active a {
+  color: #fff;
+}
+
+/* 스크롤바 스타일 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a1a1a1;
 }
 </style>
