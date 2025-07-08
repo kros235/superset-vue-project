@@ -75,158 +75,430 @@ class SupersetAPI {
     try {
       console.log('Superset 연결 상태 확인 중...')
       const response = await this.api.get('/health', { timeout: 10000 })
-      console.log('✓ Superset 연결 성공')
-      return { success: true, status: response.status }
+      console.log('Superset 연결 성공:', response.status)
+      return true
     } catch (error) {
-      console.error('✗ Superset 연결 실패:', {
-        message: error.message,
-        code: error.code,
-        response: error.response?.status
-      })
-      return { 
-        success: false, 
-        error: error.message,
-        details: {
-          code: error.code,
-          status: error.response?.status
-        }
-      }
+      console.error('Superset 연결 실패:', error.message)
+      return false
     }
   }
 
-  // CSRF 토큰 획득 (선택사항)
-  async getCsrfToken() {
-    try {
-      console.log('CSRF 토큰 요청 중...')
-      const response = await this.api.get('/api/v1/security/csrf_token/', {
-        timeout: 10000
-      })
-      
-      const csrfToken = response.data.result
-      localStorage.setItem('superset_csrf_token', csrfToken)
-      console.log('✓ CSRF 토큰 획득 성공')
-      return csrfToken
-    } catch (error) {
-      console.warn('CSRF 토큰 획득 실패 (로그인은 계속 시도):', error.message)
-      return null
-    }
-  }
-
-  // 로그인
+  // 1. 인증 관련
   async login(username, password) {
     try {
-      console.log(`로그인 시도: ${username}`)
-
-      // 1. 연결 상태 먼저 확인
-      const connectionCheck = await this.checkConnection()
-      if (!connectionCheck.success) {
-        throw new Error(`서버에 연결할 수 없습니다: ${connectionCheck.error}`)
-      }
-
-      // 2. CSRF 토큰 시도 (실패해도 계속 진행)
-      await this.getCsrfToken()
-
-      // 3. 로그인 요청
-      const loginData = {
-        username: username,
-        password: password,
+      console.log('로그인 시도:', { username })
+      
+      const response = await this.api.post('/api/v1/security/login', {
+        username,
+        password,
         provider: 'db',
         refresh: true
-      }
+      })
 
-      console.log('로그인 요청 전송 중...')
-      const response = await this.api.post('/api/v1/security/login', loginData)
+      console.log('로그인 응답:', response.data)
 
-      if (response.data && response.data.access_token) {
-        // 토큰 저장
+      // 토큰 저장
+      if (response.data.access_token) {
         localStorage.setItem('superset_access_token', response.data.access_token)
-        if (response.data.refresh_token) {
-          localStorage.setItem('superset_refresh_token', response.data.refresh_token)
-        }
-
-        // 사용자 정보 저장 (기본 정보로 설정)
-        const basicUser = {
-          username: username,
-          first_name: username,
-          last_name: 'User',
-          email: `${username}@example.com`,
-          roles: [{ name: 'Admin' }], // admin 사용자에게 Admin 역할 부여
-          active: true
-        }
-        localStorage.setItem('superset_user', JSON.stringify(basicUser))
-
-        console.log('✓ 로그인 성공')
-        return {
-          success: true,
-          user: basicUser,
-          token: response.data.access_token
-        }
-      } else {
-        throw new Error('로그인 응답에 액세스 토큰이 없습니다.')
+        console.log('Access token 저장됨')
       }
-      
+
+      if (response.data.refresh_token) {
+        localStorage.setItem('superset_refresh_token', response.data.refresh_token)
+        console.log('Refresh token 저장됨')
+      }
+
+      // CSRF 토큰 가져오기
+      await this.getCSRFToken()
+
+      return response.data
     } catch (error) {
-      console.error('로그인 실패:', error)
-      
-      let errorMessage = '로그인에 실패했습니다.'
-      
-      if (error.code === 'ERR_NETWORK' || error.message.includes('연결할 수 없습니다')) {
-        errorMessage = '서버에 연결할 수 없습니다. Superset 서버가 실행 중인지 확인해주세요.'
-      } else if (error.response?.status === 401) {
-        errorMessage = '사용자명 또는 비밀번호가 올바르지 않습니다.'
-      } else if (error.response?.status === 500) {
-        errorMessage = '서버 내부 오류가 발생했습니다.'
-      } else if (error.message) {
-        errorMessage = error.message
-      }
-
-      return {
-        success: false,
-        error: errorMessage,
-        details: {
-          code: error.code,
-          status: error.response?.status,
-          message: error.message
-        }
-      }
+      console.error('로그인 오류:', error.response?.data || error.message)
+      throw error
     }
   }
 
-  // 사용자 정보 조회
-  async getUserInfo() {
+  async getCSRFToken() {
     try {
-      const response = await this.api.get('/api/v1/me/')
-      return {
-        success: true,
-        user: response.data.result
+      console.log('CSRF 토큰 요청 중...')
+      const response = await this.api.get('/api/v1/security/csrf_token/')
+      
+      if (response.data?.result) {
+        localStorage.setItem('superset_csrf_token', response.data.result)
+        console.log('CSRF 토큰 저장됨')
+        return response.data.result
       }
     } catch (error) {
-      console.error('사용자 정보 조회 실패:', error)
-      return {
-        success: false,
-        error: error.message
-      }
+      console.error('CSRF 토큰 오류:', error)
+      // CSRF 토큰 실패해도 계속 진행
     }
   }
 
-  // 로그아웃
-  async logout() {
+  async refreshAccessToken() {
     try {
-      await this.api.post('/api/v1/security/logout')
+      const refreshToken = localStorage.getItem('superset_refresh_token')
+      if (!refreshToken) {
+        throw new Error('Refresh token이 없습니다')
+      }
+
+      const response = await this.api.post('/api/v1/security/refresh', {
+        refresh_token: refreshToken
+      })
+
+      if (response.data.access_token) {
+        localStorage.setItem('superset_access_token', response.data.access_token)
+      }
+
+      return response.data.access_token
     } catch (error) {
-      console.error('로그아웃 API 호출 실패:', error)
-    } finally {
-      // 로컬 스토리지 정리
-      localStorage.removeItem('superset_access_token')
-      localStorage.removeItem('superset_refresh_token')
-      localStorage.removeItem('superset_csrf_token')
+      console.error('토큰 갱신 오류:', error)
+      this.logout()
+      throw error
     }
   }
 
-  // 인증 상태 확인
+  logout() {
+    console.log('로그아웃 - 토큰 정리')
+    localStorage.removeItem('superset_access_token')
+    localStorage.removeItem('superset_refresh_token')
+    localStorage.removeItem('superset_csrf_token')
+  }
+
   isAuthenticated() {
     return !!localStorage.getItem('superset_access_token')
   }
+
+  // 2. 데이터베이스 관련
+  async getDatabases() {
+    try {
+      console.log('데이터베이스 목록 조회 중...')
+      const response = await this.api.get('/api/v1/database/')
+      console.log('데이터베이스 응답:', response.data)
+      return response.data.result || []
+    } catch (error) {
+      console.error('데이터베이스 조회 오류:', error)
+      throw error
+    }
+  }
+
+  async testDatabaseConnection(payload) {
+    try {
+      console.log('데이터베이스 연결 테스트:', payload)
+      
+      const response = await this.api.post('/api/v1/database/test_connection/', payload)
+      
+      console.log('연결 테스트 응답:', response.data)
+      
+      if (response.status === 200) {
+        return { success: true, message: response.data.message || 'Connection successful' }
+      } else {
+        return { success: false, message: response.data.message || 'Connection failed' }
+      }
+    } catch (error) {
+      console.error('연결 테스트 오류:', error)
+      
+      const errorMessage = error.response?.data?.message || 
+                          error.response?.data?.error || 
+                          error.message || 
+                          'Connection test failed'
+      
+      return { success: false, message: errorMessage }
+    }
+  }
+
+  async createDatabase(payload) {
+    try {
+      console.log('데이터베이스 생성:', payload)
+      const response = await this.api.post('/api/v1/database/', payload)
+      console.log('데이터베이스 생성 응답:', response.data)
+      return response.data
+    } catch (error) {
+      console.error('데이터베이스 생성 오류:', error)
+      throw error
+    }
+  }
+
+  async updateDatabase(id, payload) {
+    try {
+      console.log('데이터베이스 업데이트:', id, payload)
+      const response = await this.api.put(`/api/v1/database/${id}`, payload)
+      return response.data
+    } catch (error) {
+      console.error('데이터베이스 업데이트 오류:', error)
+      throw error
+    }
+  }
+
+  async deleteDatabase(id) {
+    try {
+      console.log('데이터베이스 삭제:', id)
+      const response = await this.api.delete(`/api/v1/database/${id}`)
+      return response.data
+    } catch (error) {
+      console.error('데이터베이스 삭제 오류:', error)
+      throw error
+    }
+  }
+
+  // 3. 데이터셋 관련
+  async getDatasets() {
+    try {
+      console.log('데이터셋 목록 조회 중...')
+      const response = await this.api.get('/api/v1/dataset/')
+      console.log('데이터셋 응답:', response.data)
+      return response.data.result || []
+    } catch (error) {
+      console.error('데이터셋 조회 오류:', error)
+      throw error
+    }
+  }
+
+  async createDataset(payload) {
+    try {
+      console.log('데이터셋 생성:', payload)
+      const response = await this.api.post('/api/v1/dataset/', payload)
+      return response.data
+    } catch (error) {
+      console.error('데이터셋 생성 오류:', error)
+      throw error
+    }
+  }
+
+  async updateDataset(id, payload) {
+    try {
+      console.log('데이터셋 업데이트:', id, payload)
+      const response = await this.api.put(`/api/v1/dataset/${id}`, payload)
+      return response.data
+    } catch (error) {
+      console.error('데이터셋 업데이트 오류:', error)
+      throw error
+    }
+  }
+
+  async deleteDataset(id) {
+    try {
+      console.log('데이터셋 삭제:', id)
+      const response = await this.api.delete(`/api/v1/dataset/${id}`)
+      return response.data
+    } catch (error) {
+      console.error('데이터셋 삭제 오류:', error)
+      throw error
+    }
+  }
+
+  // 4. 차트 관련
+  async getCharts() {
+    try {
+      console.log('차트 목록 조회 중...')
+      const response = await this.api.get('/api/v1/chart/')
+      console.log('차트 응답:', response.data)
+      return response.data.result || []
+    } catch (error) {
+      console.error('차트 조회 오류:', error)
+      throw error
+    }
+  }
+
+  async createChart(payload) {
+    try {
+      console.log('차트 생성:', payload)
+      const response = await this.api.post('/api/v1/chart/', payload)
+      return response.data
+    } catch (error) {
+      console.error('차트 생성 오류:', error)
+      throw error
+    }
+  }
+
+  async updateChart(id, payload) {
+    try {
+      console.log('차트 업데이트:', id, payload)
+      const response = await this.api.put(`/api/v1/chart/${id}`, payload)
+      return response.data
+    } catch (error) {
+      console.error('차트 업데이트 오류:', error)
+      throw error
+    }
+  }
+
+  async deleteChart(id) {
+    try {
+      console.log('차트 삭제:', id)
+      const response = await this.api.delete(`/api/v1/chart/${id}`)
+      return response.data
+    } catch (error) {
+      console.error('차트 삭제 오류:', error)
+      throw error
+    }
+  }
+
+  // 5. 대시보드 관련
+  async getDashboards() {
+    try {
+      console.log('대시보드 목록 조회 중...')
+      const response = await this.api.get('/api/v1/dashboard/')
+      console.log('대시보드 응답:', response.data)
+      return response.data.result || []
+    } catch (error) {
+      console.error('대시보드 조회 오류:', error)
+      throw error
+    }
+  }
+
+  async createDashboard(payload) {
+    try {
+      console.log('대시보드 생성:', payload)
+      const response = await this.api.post('/api/v1/dashboard/', payload)
+      return response.data
+    } catch (error) {
+      console.error('대시보드 생성 오류:', error)
+      throw error
+    }
+  }
+
+  async updateDashboard(id, payload) {
+    try {
+      console.log('대시보드 업데이트:', id, payload)
+      const response = await this.api.put(`/api/v1/dashboard/${id}`, payload)
+      return response.data
+    } catch (error) {
+      console.error('대시보드 업데이트 오류:', error)
+      throw error
+    }
+  }
+
+  async deleteDashboard(id) {
+    try {
+      console.log('대시보드 삭제:', id)
+      const response = await this.api.delete(`/api/v1/dashboard/${id}`)
+      return response.data
+    } catch (error) {
+      console.error('대시보드 삭제 오류:', error)
+      throw error
+    }
+  }
+
+  // 6. 사용자 관리 관련
+  async getUsers() {
+    try {
+      console.log('사용자 목록 조회 중...')
+      const response = await this.api.get('/api/v1/security/users/')
+      console.log('사용자 응답:', response.data)
+      return response.data.result || []
+    } catch (error) {
+      console.error('사용자 조회 오류:', error)
+      throw error
+    }
+  }
+
+  async createUser(payload) {
+    try {
+      console.log('사용자 생성:', payload)
+      const response = await this.api.post('/api/v1/security/users/', payload)
+      return response.data
+    } catch (error) {
+      console.error('사용자 생성 오류:', error)
+      throw error
+    }
+  }
+
+  async updateUser(id, payload) {
+    try {
+      console.log('사용자 업데이트:', id, payload)
+      const response = await this.api.put(`/api/v1/security/users/${id}`, payload)
+      return response.data
+    } catch (error) {
+      console.error('사용자 업데이트 오류:', error)
+      throw error
+    }
+  }
+
+  async deleteUser(id) {
+    try {
+      console.log('사용자 삭제:', id)
+      const response = await this.api.delete(`/api/v1/security/users/${id}`)
+      return response.data
+    } catch (error) {
+      console.error('사용자 삭제 오류:', error)
+      throw error
+    }
+  }
+
+  // 7. 권한 관련
+  async getRoles() {
+    try {
+      console.log('역할 목록 조회 중...')
+      const response = await this.api.get('/api/v1/security/roles/')
+      return response.data.result || []
+    } catch (error) {
+      console.error('역할 조회 오류:', error)
+      throw error
+    }
+  }
+
+  async getUserInfo() {
+    try {
+      console.log('사용자 정보 조회 중...')
+      const response = await this.api.get('/api/v1/me/')
+      console.log('사용자 정보:', response.data)
+      return response.data
+    } catch (error) {
+      console.error('사용자 정보 조회 오류:', error)
+      throw error
+    }
+  }
+
+  // 8. 차트 데이터 조회
+  async getChartData(id, formData) {
+    try {
+      console.log('차트 데이터 조회:', id, formData)
+      const response = await this.api.post(`/api/v1/chart/data`, {
+        datasource: {
+          id: formData.datasource,
+          type: 'table'
+        },
+        queries: [{
+          ...formData
+        }]
+      })
+      return response.data
+    } catch (error) {
+      console.error('차트 데이터 조회 오류:', error)
+      throw error
+    }
+  }
+
+  // 9. 테이블 메타데이터 조회
+  async getTableMetadata(databaseId, tableName, schemaName = '') {
+    try {
+      console.log('테이블 메타데이터 조회:', { databaseId, tableName, schemaName })
+      
+      let url = `/api/v1/database/${databaseId}/table/${tableName}/`
+      if (schemaName) {
+        url += `${schemaName}/`
+      }
+      
+      const response = await this.api.get(url)
+      return response.data
+    } catch (error) {
+      console.error('테이블 메타데이터 조회 오류:', error)
+      throw error
+    }
+  }
+
+  // 10. SQL Lab 관련
+  async executeSQL(payload) {
+    try {
+      console.log('SQL 실행:', payload)
+      const response = await this.api.post('/api/v1/sqllab/execute/', payload)
+      return response.data
+    } catch (error) {
+      console.error('SQL 실행 오류:', error)
+      throw error
+    }
+  }
 }
 
-export default new SupersetAPI()
+// 싱글톤 인스턴스 생성 및 내보내기
+const supersetAPI = new SupersetAPI()
+export default supersetAPI
