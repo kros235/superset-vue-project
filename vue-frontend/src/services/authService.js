@@ -129,12 +129,24 @@ class AuthService {
     return this.isAdmin()
   }
 
-  canCreateCharts() {
+  canCreateChart() {
     return this.isAdmin() || this.hasRole('Alpha') || this.hasRole('Gamma')
+  }
+
+  canCreateCharts() {
+    return this.canCreateChart()
+  }
+
+  canConnectDatabase() {
+    return this.isAdmin() || this.hasRole('Alpha')
   }
 
   canCreateDashboards() {
     return this.isAdmin() || this.hasRole('Alpha') || this.hasRole('Gamma')
+  }
+
+  canCreateDashboard() {
+    return this.canCreateDashboards()
   }
 
   canManageDataSources() {
