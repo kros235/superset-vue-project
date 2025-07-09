@@ -65,6 +65,8 @@ services:
       redis:
         condition: service_started
     restart: unless-stopped
+    # command 라인 제거 또는 주석처리
+    # command: ["/bin/bash", "/app/superset-init.sh"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8088/health"]
       interval: 30s

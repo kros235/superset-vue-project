@@ -17,18 +17,41 @@ class AuthService {
       console.log(`[AuthService] 로그인 시도: ${username}`)
       const result = await supersetAPI.login(username, password)
       
-      if (result.success) {
-        console.log('[AuthService] 로그인 성공')
-        return result
+      // supersetAPI.login()이 성공하면 토큰이 포함된 응답을 반환
+      // access_token이 있으면 로그인 성공으로 처리
+      if (result && result.access_token) {
+        console.log('[AuthService] 로그인 성공 - 토큰 확인됨')
+        
+        // 사용자 정보 설정 (간단한 정보로 시작)
+        const user = {
+          id: 1,
+          username: username,
+          email: `${username}@admin.com`,
+          first_name: username === 'admin' ? 'Admin' : 'User',
+          last_name: 'User',
+          roles: username === 'admin' ? [{ name: 'Admin' }] : [{ name: 'Public' }]
+        }
+        
+        // localStorage에 사용자 정보 저장
+        localStorage.setItem('superset_user', JSON.stringify(user))
+        
+        return {
+          success: true,
+          user: user,
+          message: '로그인 성공'
+        }
       } else {
-        console.error('[AuthService] 로그인 실패:', result.error)
-        return result
+        console.error('[AuthService] 로그인 실패 - 토큰 없음')
+        return {
+          success: false,
+          error: '로그인에 실패했습니다.'
+        }
       }
     } catch (error) {
       console.error('[AuthService] 로그인 처리 중 오류:', error)
       return {
         success: false,
-        error: error.message || '로그인 처리 중 오류가 발생했습니다.'
+        error: error.response?.data?.message || error.message || '로그인 처리 중 오류가 발생했습니다.'
       }
     }
   }
@@ -50,6 +73,7 @@ class AuthService {
   async logout() {
     try {
       await supersetAPI.logout()
+      localStorage.removeItem('superset_user')
       console.log('[AuthService] 로그아웃 완료')
       
       // 페이지 리다이렉트
@@ -63,25 +87,14 @@ class AuthService {
 
   // 인증 상태 확인
   isAuthenticated() {
-    return supersetAPI.isAuthenticated()
+    return supersetAPI.isAuthenticated() && this.getCurrentUser()
   }
 
   // 현재 사용자 정보 조회
   getCurrentUser() {
     try {
       const userStr = localStorage.getItem('superset_user')
-      let user = userStr ? JSON.parse(userStr) : null
-      
-      // admin 사용자에게 강제로 Admin 역할 부여 (임시 해결책)
-      if (user && user.username === 'admin') {
-        if (!user.roles || !Array.isArray(user.roles) || user.roles.length === 0) {
-          user.roles = [{ name: 'Admin' }]
-          localStorage.setItem('superset_user', JSON.stringify(user))
-          console.log('admin 사용자에게 강제로 Admin 역할 부여됨:', user)
-        }
-      }
-      
-      return user
+      return userStr ? JSON.parse(userStr) : null
     } catch (error) {
       console.error('사용자 정보 파싱 오류:', error)
       return null
@@ -116,111 +129,97 @@ class AuthService {
     return this.isAdmin()
   }
 
-  canCreateChart() {
+  canCreateCharts() {
     return this.isAdmin() || this.hasRole('Alpha') || this.hasRole('Gamma')
   }
 
-  canEditChart() {
-    return this.isAdmin() || this.hasRole('Alpha')
-  }
-
-  canDeleteChart() {
-    return this.isAdmin()
+  canCreateDashboards() {
+    return this.isAdmin() || this.hasRole('Alpha') || this.hasRole('Gamma')
   }
 
   canManageDataSources() {
     return this.isAdmin() || this.hasRole('Alpha')
   }
 
-  canConnectDatabase() {
-    return this.isAdmin() || this.hasRole('Alpha')
+  canAccessSQLLab() {
+    return this.isAdmin() || this.hasRole('Alpha') || this.hasRole('sql_lab')
   }
 
-  // 사용 가능한 메뉴 조회
+  // 사용자 권한에 따른 메뉴 구성
   getAvailableMenus() {
-    const menus = []
-    
-    // 대시보드는 모든 사용자가 접근 가능
-    menus.push({
-      key: 'dashboard',
-      title: '대시보드',
-      path: '/',
-      icon: 'DashboardOutlined'
-    })
-    
-    // 차트 빌더는 차트 생성 권한이 있는 사용자만 접근 가능
-    if (this.canCreateChart()) {
-      menus.push({
-        key: 'chart-builder',
-        title: '차트 빌더',
+    const baseMenus = [
+      {
+        key: 'dashboard',
+        title: '대시보드',
+        path: '/',
+        icon: 'DashboardOutlined',
+        roles: ['Admin', 'Alpha', 'Gamma', 'Public']
+      }
+    ]
+
+    const adminMenus = [
+      {
+        key: 'charts',
+        title: '차트 관리',
         path: '/charts',
-        icon: 'BarChartOutlined'
-      })
-    }
-    
-    // 데이터 소스 관리는 관리자와 Alpha 역할만 접근 가능
-    if (this.canManageDataSources()) {
-      menus.push({
-        key: 'data-sources',
+        icon: 'BarChartOutlined',
+        roles: ['Admin', 'Alpha', 'Gamma']
+      },
+      {
+        key: 'datasources',
         title: '데이터 소스',
         path: '/datasources',
-        icon: 'DatabaseOutlined'
-      })
-    }
-    
-    // 사용자 관리는 관리자만 접근 가능
-    if (this.canManageUsers()) {
-      menus.push({
-        key: 'user-management',
+        icon: 'DatabaseOutlined',
+        roles: ['Admin', 'Alpha']
+      },
+      {
+        key: 'users',
         title: '사용자 관리',
         path: '/users',
-        icon: 'UserOutlined'
-      })
-    }
-    
-    return menus
+        icon: 'UserOutlined',
+        roles: ['Admin']
+      }
+    ]
+
+    const allMenus = [...baseMenus, ...adminMenus]
+    const currentUserRole = this.getUserRole()
+
+    // 사용자 역할에 따라 접근 가능한 메뉴만 필터링
+    return allMenus.filter(menu => {
+      if (!menu.roles) return true
+      return menu.roles.includes(currentUserRole) || this.isAdmin()
+    })
   }
 
-  // 대시보드 레이아웃 설정
+  // 대시보드 레이아웃 설정 (사용자 권한에 따라)
   getDashboardLayout() {
-    const role = this.getUserRole()
-    
-    switch (role) {
-      case 'Admin':
-        return {
-          showAllCharts: true,
-          canEdit: true,
-          canDelete: true,
-          showUserManagement: true
-        }
-      case 'Alpha':
-        return {
-          showAllCharts: true,
-          canEdit: true,
-          canDelete: false,
-          showUserManagement: false
-        }
-      case 'Gamma':
-        return {
-          showAllCharts: false,
-          canEdit: false,
-          canDelete: false,
-          showUserManagement: false
-        }
-      default:
-        return {
-          showAllCharts: false,
-          canEdit: false,
-          canDelete: false,
-          showUserManagement: false
-        }
+    if (this.isAdmin()) {
+      return {
+        showAllCharts: true,
+        showStatistics: true,
+        showUserManagement: true,
+        showAdvancedFeatures: true
+      }
     }
-  }
-
-  // 저장된 토큰으로 초기화
-  initializeFromStorage() {
-    return this.isAuthenticated()
+    
+    if (this.hasRole('Alpha')) {
+      return {
+        showAllCharts: true,
+        showStatistics: true,
+        showUserManagement: false,
+        showAdvancedFeatures: true
+      }
+    }
+    
+    return {
+      showAllCharts: false,
+      showStatistics: false,
+      showUserManagement: false,
+      showAdvancedFeatures: false
+    }
   }
 }
 
-export default new AuthService()
+// 싱글톤 인스턴스 생성 및 내보내기
+const authService = new AuthService()
+export default authService

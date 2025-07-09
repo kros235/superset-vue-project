@@ -31,6 +31,29 @@ RUN pip list | grep -i mysql
 RUN python -c "import pymysql; print('PyMySQL: OK')" || echo "PyMySQL: Failed"
 RUN python -c "import mysql.connector; print('MySQL Connector: OK')" || echo "MySQL Connector: Failed"
 
+# MySQL 드라이버 설치
+RUN pip install \
+    mysqlclient==2.1.1 \
+    PyMySQL==1.0.2
+
+# 초기화 스크립트 추가 (Docker 내에서 생성하여 줄바꿈 문제 방지)
+USER root
+RUN cat > /app/superset-init.sh << 'EOF' && \
+#!/bin/bash
+set -e
+echo "=== Superset 초기화 시작 ==="
+while ! mysqladmin ping -h mariadb -u superset -psuperset123 --silent; do
+    echo "MariaDB 연결 대기..."
+    sleep 2
+done
+superset db upgrade
+superset fab create-admin --username admin --firstname Admin --lastname User --email admin@admin.com --password admin || echo "계정 존재"
+superset init
+echo "=== 초기화 완료 ==="
+exec superset run -h 0.0.0.0 -p 8088 --with-threads --reload --debugger
+EOF
+chmod +x /app/superset-init.sh
+
 # superset 사용자로 전환
 USER superset
 
