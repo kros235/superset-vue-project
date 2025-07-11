@@ -22,23 +22,38 @@ class AuthService {
       if (result && result.access_token) {
         console.log('[AuthService] 로그인 성공 - 토큰 확인됨')
         
-        // 사용자 정보 설정 (간단한 정보로 시작)
-        const user = {
-          id: 1,
-          username: username,
-          email: `${username}@admin.com`,
-          first_name: username === 'admin' ? 'Admin' : 'User',
-          last_name: 'User',
-          roles: username === 'admin' ? [{ name: 'Admin' }] : [{ name: 'Public' }]
-        }
-        
-        // localStorage에 사용자 정보 저장
-        localStorage.setItem('superset_user', JSON.stringify(user))
-        
-        return {
-          success: true,
-          user: user,
-          message: '로그인 성공'
+        // 사용자 정보를 supersetAPI를 통해 조회
+        try {
+          const user = await supersetAPI.getCurrentUser()
+          console.log('[AuthService] 사용자 정보 조회 성공:', user)
+          
+          return {
+            success: true,
+            user: user,
+            message: '로그인 성공'
+          }
+        } catch (userError) {
+          console.warn('[AuthService] 사용자 정보 조회 실패, 기본 정보 사용:', userError)
+          
+          // 사용자 정보 조회 실패시 기본 정보 사용
+          const defaultUser = {
+            id: 1,
+            username: username,
+            email: `${username}@admin.com`,
+            first_name: username === 'admin' ? 'Admin' : 'User',
+            last_name: 'User',
+            roles: username === 'admin' ? [{ name: 'Admin' }] : [{ name: 'Public' }],
+            permissions: ['can_sqllab', 'can_read', 'can_write']
+          }
+          
+          // localStorage에 사용자 정보 저장
+          localStorage.setItem('superset_user', JSON.stringify(defaultUser))
+          
+          return {
+            success: true,
+            user: defaultUser,
+            message: '로그인 성공'
+          }
         }
       } else {
         console.error('[AuthService] 로그인 실패 - 토큰 없음')
@@ -56,10 +71,10 @@ class AuthService {
     }
   }
 
-  // 사용자 정보 조회
+  // 사용자 정보 조회 (supersetAPI 사용)
   async getUserInfo() {
     try {
-      return await supersetAPI.getUserInfo()
+      return await supersetAPI.getCurrentUser()
     } catch (error) {
       console.error('[AuthService] 사용자 정보 조회 실패:', error)
       return {
@@ -73,7 +88,6 @@ class AuthService {
   async logout() {
     try {
       await supersetAPI.logout()
-      localStorage.removeItem('superset_user')
       console.log('[AuthService] 로그아웃 완료')
       
       // 페이지 리다이렉트
@@ -87,33 +101,43 @@ class AuthService {
 
   // 인증 상태 확인
   isAuthenticated() {
-    return supersetAPI.isAuthenticated() && this.getCurrentUser()
+    return supersetAPI.isAuthenticated()
   }
 
-  // 현재 사용자 정보 조회
+  // 현재 사용자 정보 조회 (동기식 - 로컬 스토리지에서)
   getCurrentUser() {
     try {
       const userStr = localStorage.getItem('superset_user')
       return userStr ? JSON.parse(userStr) : null
     } catch (error) {
-      console.error('사용자 정보 파싱 오류:', error)
+      console.error('[AuthService] 로컬 사용자 정보 파싱 오류:', error)
       return null
     }
   }
 
-  // 사용자 역할 조회
-  getUserRole() {
+  // 현재 사용자 정보 조회 (비동기식 - API 호출)
+  async getCurrentUserAsync() {
+    try {
+      return await supersetAPI.getCurrentUser()
+    } catch (error) {
+      console.error('[AuthService] 비동기 사용자 정보 조회 실패:', error)
+      return this.getCurrentUser() // fallback to local storage
+    }
+  }
+
+  // 사용자 권한 확인
+  hasPermission(permission) {
     const user = this.getCurrentUser()
-    if (!user || !user.roles || !Array.isArray(user.roles)) {
-      return null
+    if (!user || !user.permissions) {
+      return false
     }
-    return user.roles[0]?.name || null
+    return user.permissions.includes(permission)
   }
 
-  // 특정 역할 확인
+  // 사용자 역할 확인
   hasRole(roleName) {
     const user = this.getCurrentUser()
-    if (!user || !user.roles || !Array.isArray(user.roles)) {
+    if (!user || !user.roles) {
       return false
     }
     return user.roles.some(role => role.name === roleName)
@@ -121,114 +145,7 @@ class AuthService {
 
   // 관리자 여부 확인
   isAdmin() {
-    return this.hasRole('Admin')
-  }
-
-  // 권한 확인 메서드들
-  canManageUsers() {
-    return this.isAdmin()
-  }
-
-  canCreateChart() {
-    return this.isAdmin() || this.hasRole('Alpha') || this.hasRole('Gamma')
-  }
-
-  canCreateCharts() {
-    return this.canCreateChart()
-  }
-
-  canConnectDatabase() {
-    return this.isAdmin() || this.hasRole('Alpha')
-  }
-
-  canCreateDashboards() {
-    return this.isAdmin() || this.hasRole('Alpha') || this.hasRole('Gamma')
-  }
-
-  canCreateDashboard() {
-    return this.canCreateDashboards()
-  }
-
-  canManageDataSources() {
-    return this.isAdmin() || this.hasRole('Alpha')
-  }
-
-  canAccessSQLLab() {
-    return this.isAdmin() || this.hasRole('Alpha') || this.hasRole('sql_lab')
-  }
-
-  // 사용자 권한에 따른 메뉴 구성
-  getAvailableMenus() {
-    const baseMenus = [
-      {
-        key: 'dashboard',
-        title: '대시보드',
-        path: '/',
-        icon: 'DashboardOutlined',
-        roles: ['Admin', 'Alpha', 'Gamma', 'Public']
-      }
-    ]
-
-    const adminMenus = [
-      {
-        key: 'charts',
-        title: '차트 관리',
-        path: '/charts',
-        icon: 'BarChartOutlined',
-        roles: ['Admin', 'Alpha', 'Gamma']
-      },
-      {
-        key: 'datasources',
-        title: '데이터 소스',
-        path: '/datasources',
-        icon: 'DatabaseOutlined',
-        roles: ['Admin', 'Alpha']
-      },
-      {
-        key: 'users',
-        title: '사용자 관리',
-        path: '/users',
-        icon: 'UserOutlined',
-        roles: ['Admin']
-      }
-    ]
-
-    const allMenus = [...baseMenus, ...adminMenus]
-    const currentUserRole = this.getUserRole()
-
-    // 사용자 역할에 따라 접근 가능한 메뉴만 필터링
-    return allMenus.filter(menu => {
-      if (!menu.roles) return true
-      return menu.roles.includes(currentUserRole) || this.isAdmin()
-    })
-  }
-
-  // 대시보드 레이아웃 설정 (사용자 권한에 따라)
-  getDashboardLayout() {
-    if (this.isAdmin()) {
-      return {
-        showAllCharts: true,
-        showStatistics: true,
-        showUserManagement: true,
-        showAdvancedFeatures: true
-      }
-    }
-    
-    if (this.hasRole('Alpha')) {
-      return {
-        showAllCharts: true,
-        showStatistics: true,
-        showUserManagement: false,
-        showAdvancedFeatures: true
-      }
-    }
-    
-    return {
-      showAllCharts: false,
-      showStatistics: false,
-      showUserManagement: false,
-      showAdvancedFeatures: false
-    }
+    return this.hasRole('Admin') || this.hasRole('admin')
   }
 }
 

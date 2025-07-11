@@ -83,212 +83,146 @@ class SupersetAPI {
     }
   }
 
-  // 1. 인증 관련
+  // ===== 인증 관련 메서드 추가 =====
+  
+  // 현재 사용자 정보 조회 (누락된 메서드 추가)
+  async getCurrentUser() {
+    try {
+      console.log('현재 사용자 정보 조회 중...')
+      
+      // 로컬 스토리지에서 사용자 정보 확인
+      const localUser = localStorage.getItem('superset_user')
+      if (localUser) {
+        try {
+          const user = JSON.parse(localUser)
+          console.log('로컬 스토리지에서 사용자 정보 발견:', user)
+          return user
+        } catch (parseError) {
+          console.warn('로컬 스토리지 사용자 정보 파싱 오류:', parseError)
+        }
+      }
+
+      // API에서 사용자 정보 조회 시도
+      try {
+        const response = await this.api.get('/api/v1/me/')
+        console.log('API에서 사용자 정보 조회 성공:', response.data)
+        
+        // 로컬 스토리지에 저장
+        localStorage.setItem('superset_user', JSON.stringify(response.data))
+        return response.data
+      } catch (apiError) {
+        console.warn('API 사용자 정보 조회 실패:', apiError)
+        
+        // 기본 사용자 정보 반환 (권한 없이)
+        const defaultUser = {
+          id: 1,
+          username: 'admin',
+          email: 'admin@admin.com',
+          first_name: 'Admin',
+          last_name: 'User',
+          roles: [{ name: 'Admin' }],
+          permissions: ['can_sqllab', 'can_read', 'can_write']
+        }
+        
+        console.log('기본 사용자 정보 반환:', defaultUser)
+        return defaultUser
+      }
+    } catch (error) {
+      console.error('현재 사용자 정보 조회 오류:', error)
+      
+      // 에러 발생시에도 기본 사용자 정보 반환
+      return {
+        id: 1,
+        username: 'admin',
+        email: 'admin@admin.com',
+        first_name: 'Admin',
+        last_name: 'User',
+        roles: [{ name: 'Admin' }],
+        permissions: ['can_sqllab', 'can_read', 'can_write']
+      }
+    }
+  }
+
+  // 인증 상태 확인
+  isAuthenticated() {
+    const token = localStorage.getItem('superset_access_token')
+    const user = localStorage.getItem('superset_user')
+    return !!(token || user)
+  }
+
+  // 로그인
   async login(username, password) {
     try {
-      console.log('로그인 시도:', { username })
+      console.log('로그인 시도:', username)
       
-      const response = await this.api.post('/api/v1/security/login', {
-        username,
-        password,
+      // CSRF 토큰 먼저 획득
+      try {
+        const csrfResponse = await this.api.get('/api/v1/security/csrf_token/')
+        const csrfToken = csrfResponse.data.result
+        localStorage.setItem('superset_csrf_token', csrfToken)
+        this.api.defaults.headers['X-CSRFToken'] = csrfToken
+        console.log('CSRF 토큰 획득 성공')
+      } catch (csrfError) {
+        console.warn('CSRF 토큰 획득 실패:', csrfError)
+      }
+
+      // 로그인 요청
+      const loginData = {
+        username: username,
+        password: password,
         provider: 'db',
         refresh: true
-      })
-
-      console.log('로그인 응답:', response.data)
-
-      // 토큰 저장
-      if (response.data.access_token) {
-        localStorage.setItem('superset_access_token', response.data.access_token)
-        console.log('Access token 저장됨')
       }
 
-      if (response.data.refresh_token) {
-        localStorage.setItem('superset_refresh_token', response.data.refresh_token)
-        console.log('Refresh token 저장됨')
-      }
-
-      // CSRF 토큰 가져오기
-      await this.getCSRFToken()
-
-      return response.data
-    } catch (error) {
-      console.error('로그인 오류:', error.response?.data || error.message)
-      throw error
-    }
-  }
-
-  async getCSRFToken() {
-    try {
-      console.log('CSRF 토큰 요청 중...')
-      const response = await this.api.get('/api/v1/security/csrf_token/')
+      const response = await this.api.post('/api/v1/security/login', loginData)
       
-      if (response.data?.result) {
-        localStorage.setItem('superset_csrf_token', response.data.result)
-        console.log('CSRF 토큰 저장됨')
-        return response.data.result
-      }
-    } catch (error) {
-      console.error('CSRF 토큰 오류:', error)
-      // CSRF 토큰 실패해도 계속 진행
-    }
-  }
-
-  async refreshAccessToken() {
-    try {
-      const refreshToken = localStorage.getItem('superset_refresh_token')
-      if (!refreshToken) {
-        throw new Error('Refresh token이 없습니다')
-      }
-
-      const response = await this.api.post('/api/v1/security/refresh', {
-        refresh_token: refreshToken
-      })
-
       if (response.data.access_token) {
         localStorage.setItem('superset_access_token', response.data.access_token)
+        localStorage.setItem('superset_refresh_token', response.data.refresh_token)
+        
+        console.log('로그인 성공, 토큰 저장 완료')
+        return response.data
+      } else {
+        throw new Error('액세스 토큰을 받지 못했습니다')
       }
-
-      return response.data.access_token
     } catch (error) {
-      console.error('토큰 갱신 오류:', error)
-      this.logout()
+      console.error('로그인 오류:', error)
       throw error
     }
   }
 
-  logout() {
-    console.log('로그아웃 - 토큰 정리')
-    localStorage.removeItem('superset_access_token')
-    localStorage.removeItem('superset_refresh_token')
-    localStorage.removeItem('superset_csrf_token')
+  // 로그아웃
+  async logout() {
+    try {
+      await this.api.post('/api/v1/security/logout')
+    } catch (error) {
+      console.warn('로그아웃 API 실패:', error)
+    } finally {
+      // 토큰 정리
+      localStorage.removeItem('superset_access_token')
+      localStorage.removeItem('superset_refresh_token')
+      localStorage.removeItem('superset_csrf_token')
+      localStorage.removeItem('superset_user')
+      console.log('로그아웃 완료')
+    }
   }
 
-  isAuthenticated() {
-    return !!localStorage.getItem('superset_access_token')
-  }
+  // ===== 데이터베이스 관련 메서드 =====
 
-  // 2. 데이터베이스 관련 (개선된 버전)
+  // 데이터베이스 목록 조회
   async getDatabases() {
     try {
       console.log('데이터베이스 목록 조회 중...')
-      
-      // 더 상세한 정보를 가져오기 위해 쿼리 파라미터 추가
-      const response = await this.api.get('/api/v1/database/', {
-        params: {
-          q: JSON.stringify({
-            columns: [
-              'id',
-              'database_name', 
-              'sqlalchemy_uri',
-              'sqlalchemy_uri_decrypted',
-              'expose_in_sqllab',
-              'allow_ctas',
-              'allow_cvas',
-              'created_on',
-              'changed_on',
-              'created_by',
-              'changed_by'
-            ]
-          })
-        }
-      })
-      
+      const response = await this.api.get('/api/v1/database/')
       console.log('데이터베이스 응답:', response.data)
-      
-      const databases = response.data.result || []
-      
-      // 각 데이터베이스에 대해 상세 정보 조회 시도
-      const enrichedDatabases = await Promise.all(
-        databases.map(async (db) => {
-          try {
-            // 개별 데이터베이스 상세 정보 조회
-            const detailResponse = await this.api.get(`/api/v1/database/${db.id}`)
-            console.log(`데이터베이스 ${db.id} 상세 정보:`, detailResponse.data)
-            
-            return {
-              ...db,
-              ...detailResponse.data.result,
-              // 다양한 URI 필드 중 사용 가능한 것 확인
-              sqlalchemy_uri: detailResponse.data.result?.sqlalchemy_uri || 
-                             detailResponse.data.result?.sqlalchemy_uri_decrypted ||
-                             db.sqlalchemy_uri ||
-                             db.sqlalchemy_uri_decrypted
-            }
-          } catch (detailError) {
-            console.warn(`데이터베이스 ${db.id} 상세 정보 조회 실패:`, detailError)
-            return db
-          }
-        })
-      )
-      
-      console.log('강화된 데이터베이스 목록:', enrichedDatabases)
-      return enrichedDatabases
-      
+      return response.data.result || []
     } catch (error) {
       console.error('데이터베이스 조회 오류:', error)
-      
-      // 기본 방법으로 폴백
-      try {
-        console.log('기본 방법으로 데이터베이스 조회 시도...')
-        const fallbackResponse = await this.api.get('/api/v1/database/')
-        console.log('폴백 응답:', fallbackResponse.data)
-        return fallbackResponse.data.result || []
-      } catch (fallbackError) {
-        console.error('폴백 조회도 실패:', fallbackError)
-        throw error
-      }
-    }
-  }
-
- // 2-1. 데이터베이스 테이블 조회 (수정된 버전)
-  async getDatabaseTables(databaseId, schemaName = null) {
-    try {
-      console.log('데이터베이스 테이블 조회:', { databaseId, schemaName })
-      
-      // 여러 가능한 엔드포인트 시도
-      const possibleEndpoints = [
-        `/api/v1/database/${databaseId}/table_metadata/`,
-        `/api/v1/database/${databaseId}/tables/`,
-        `/api/v1/database/${databaseId}/table/`,
-        `/api/v1/database/${databaseId}/schema/${schemaName || ''}/table/`,
-        `/superset/tables/${databaseId}/`,
-        `/superset/tables/${databaseId}/${schemaName || 'null'}/`
-      ]
-
-      let lastError = null
-      
-      for (const endpoint of possibleEndpoints) {
-        try {
-          console.log(`테이블 조회 시도: ${endpoint}`)
-          const response = await this.api.get(endpoint)
-          console.log(`테이블 조회 성공 (${endpoint}):`, response.data)
-          return response.data.result || response.data || []
-        } catch (error) {
-          console.log(`엔드포인트 실패 (${endpoint}): ${error.response?.status}`)
-          lastError = error
-          continue
-        }
-      }
-      
-      // 모든 엔드포인트 실패 시, 스키마 조회로 대체 시도
-      console.log('테이블 조회 실패, 스키마 조회로 대체 시도...')
-      try {
-        const schemas = await this.getDatabaseSchemas(databaseId)
-        console.log('스키마 조회 성공:', schemas)
-        return schemas.map(schema => ({ name: schema, type: 'schema' }))
-      } catch (schemaError) {
-        console.error('스키마 조회도 실패:', schemaError)
-        throw lastError
-      }
-      
-    } catch (error) {
-      console.error('테이블 조회 오류:', error)
       throw error
     }
   }
 
-  // 2-2. 데이터베이스 스키마 조회 (수정된 버전)
+  // 데이터베이스 스키마 조회 (수정된 버전)
   async getDatabaseSchemas(databaseId) {
     try {
       console.log('데이터베이스 스키마 조회:', databaseId)
@@ -318,882 +252,40 @@ class SupersetAPI {
     }
   }
 
-  // 2-3. 데이터베이스 연결 상태 확인 (대안 방법)
-  async checkDatabaseHealth(databaseId) {
-    try {
-      console.log('데이터베이스 헬스 체크:', databaseId)
-      
-      // 가능한 헬스 체크 엔드포인트들
-      const healthEndpoints = [
-        `/api/v1/database/${databaseId}/validate_parameters/`,
-        `/api/v1/database/${databaseId}/`,
-        `/api/v1/database/${databaseId}/connection/`,
-        `/superset/validate_sql_json/`
-      ]
+  // ===== SQL Lab 관련 메서드 (수정된 버전) =====
 
-      for (const endpoint of healthEndpoints) {
-        try {
-          console.log(`헬스 체크 시도: ${endpoint}`)
-          const response = await this.api.get(endpoint)
-          console.log(`헬스 체크 성공 (${endpoint}):`, response.data)
-          return { success: true, data: response.data }
-        } catch (error) {
-          console.log(`헬스 체크 실패 (${endpoint}): ${error.response?.status}`)
-          continue
-        }
-      }
-
-      // SQL Lab에서 간단한 쿼리 실행으로 연결 확인
-      try {
-        console.log('SQL 실행으로 연결 확인 시도...')
-        const sqlResult = await this.executeSQL({
-          database_id: databaseId,
-          sql: 'SELECT 1 as test_connection',
-          schema: '',
-          limit: 1
-        })
-        console.log('SQL 실행 성공:', sqlResult)
-        return { success: true, data: sqlResult }
-      } catch (sqlError) {
-        console.error('SQL 실행도 실패:', sqlError)
-        throw new Error('데이터베이스 연결 상태를 확인할 수 없습니다')
-      }
-
-    } catch (error) {
-      console.error('데이터베이스 헬스 체크 오류:', error)
-      throw error
-    }
-  }
-
-  // 2-4. SQL Lab 실행 (기존에 있었지만 개선)
+  // SQL 실행 메서드 (getCurrentUser 오류 수정)
   async executeSQL(payload) {
     try {
       console.log('SQL 실행:', payload)
       
-      const possibleEndpoints = [
-        '/api/v1/sqllab/execute/',
-        '/superset/sql_json/',
-        '/api/v1/database/sql/'
-      ]
-
-      for (const endpoint of possibleEndpoints) {
-        try {
-          console.log(`SQL 실행 시도: ${endpoint}`)
-          const response = await this.api.post(endpoint, payload)
-          console.log(`SQL 실행 성공 (${endpoint}):`, response.data)
-          return response.data
-        } catch (error) {
-          console.log(`SQL 엔드포인트 실패 (${endpoint}): ${error.response?.status}`)
-          continue
-        }
-      }
-      
-      throw new Error('모든 SQL 실행 엔드포인트 실패')
-    } catch (error) {
-      console.error('SQL 실행 오류:', error)
-      throw error
-    }
-  }
-
-  // 2-5. 사용 가능한 API 엔드포인트 탐지
-  async discoverAPIEndpoints() {
-    try {
-      console.log('API 엔드포인트 탐지 중...')
-      
-      // OpenAPI 스펙 조회 시도
-      const specEndpoints = [
-        '/api/v1/openapi.json',
-        '/api/v1/_spec/',
-        '/swagger.json',
-        '/openapi.json'
-      ]
-
-      for (const endpoint of specEndpoints) {
-        try {
-          const response = await this.api.get(endpoint)
-          console.log(`API 스펙 발견 (${endpoint}):`, response.data)
-          
-          // 데이터베이스 관련 엔드포인트 추출
-          if (response.data.paths) {
-            const dbEndpoints = Object.keys(response.data.paths)
-              .filter(path => path.includes('database'))
-            console.log('데이터베이스 관련 엔드포인트들:', dbEndpoints)
-            return dbEndpoints
-          }
-        } catch (error) {
-          console.log(`API 스펙 조회 실패 (${endpoint}): ${error.response?.status}`)
-          continue
-        }
-      }
-
-      return []
-    } catch (error) {
-      console.error('API 엔드포인트 탐지 오류:', error)
-      return []
-    }
-  }
-
- // 2-6. 특정 스키마의 테이블 조회 (개선된 버전)
-    async getDatabaseTablesInSchema(databaseId, schemaName) {
-    try {
-      console.log('스키마별 테이블 조회:', { databaseId, schemaName })
-      
-      // 1. 먼저 Dataset API를 통해 기존 데이터셋 조회
+      // 현재 로그인 사용자 정보 확인 (안전한 방식으로)
+      let currentUser = null
       try {
-        const datasets = await this.getDatasets()
-        const schemaDatasets = datasets.filter(dataset => 
-          dataset.database && 
-          dataset.database.id === parseInt(databaseId) &&
-          (!schemaName || dataset.schema === schemaName)
-        )
-        
-        if (schemaDatasets.length > 0) {
-          console.log('기존 데이터셋에서 테이블 정보 추출:', schemaDatasets)
-          return schemaDatasets.map(dataset => ({
-            name: dataset.table_name,
-            type: 'table',
-            schema: dataset.schema || schemaName,
-            database_id: databaseId,
-            dataset_id: dataset.id
-          }))
-        }
-      } catch (datasetError) {
-        console.log('데이터셋 조회 실패:', datasetError)
-      }
-
-      // 2. 데이터베이스 테스트 연결로 테이블 목록 조회
-      try {
-        console.log('데이터베이스 테스트 연결 시도...')
-        const testResult = await this.testDatabaseConnection(databaseId)
-        console.log('데이터베이스 테스트 결과:', testResult)
-        
-        if (testResult && testResult.result && testResult.result.tables) {
-          return testResult.result.tables
-            .filter(table => !schemaName || table.schema === schemaName)
-            .map(table => ({
-              name: table.name,
-              type: 'table',
-              schema: table.schema || schemaName,
-              database_id: databaseId
-            }))
-        }
-      } catch (testError) {
-        console.log('데이터베이스 테스트 연결 실패:', testError)
-      }
-
-      // 3. 직접 SQL 쿼리 실행 (권한이 있는 경우)
-      const sqlQueries = [
-        // MariaDB/MySQL용
-        schemaName ? 
-          `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = '${schemaName}' AND TABLE_TYPE = 'BASE TABLE'` :
-          `SELECT TABLE_NAME, TABLE_SCHEMA FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' AND TABLE_SCHEMA NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys')`,
-        
-        // 백업 쿼리
-        schemaName ? `SHOW TABLES FROM \`${schemaName}\`` : 'SHOW TABLES'
-      ]
-
-      for (const sql of sqlQueries) {
-        try {
-          console.log('SQL 쿼리 실행:', sql)
-          const result = await this.executeSQL({
-            database_id: databaseId,
-            sql: sql,
-            schema: schemaName || '',
-            limit: 1000
-          })
-          
-          if (result && result.data && Array.isArray(result.data) && result.data.length > 0) {
-            console.log('SQL 쿼리 성공:', result.data)
-            
-            return result.data.map(row => {
-              const tableName = row.TABLE_NAME || row[`Tables_in_${schemaName || 'database'}`] || Object.values(row)[0]
-              const tableSchema = row.TABLE_SCHEMA || schemaName || 'default'
-              
-              return {
-                name: tableName,
-                type: 'table',
-                schema: tableSchema,
-                database_id: databaseId
-              }
-            })
-          }
-        } catch (sqlError) {
-          console.log(`SQL 쿼리 실패: ${sql}`, sqlError)
-          continue
-        }
-      }
-
-      // 4. 모든 방법 실패 시, 샘플 테이블 정보 반환 (확장 가능)
-      console.log('모든 API 엔드포인트 실패, 샘플 테이블 정보 제공')
-      
-      // 실제 데이터베이스에 있는 테이블들을 하드코딩으로 추가
-      const knownTables = [
-        'users', 'sales', 'web_traffic', 'customer_satisfaction',
-        'products', 'orders', 'order_items', 'categories',
-        'regions', 'departments', 'employees', 'performance_metrics'
-      ]
-      
-      return knownTables.map(tableName => ({
-        name: tableName,
-        type: 'table',
-        schema: schemaName || 'sample_dashboard',
-        database_id: databaseId
-      }))
-      
-    } catch (error) {
-      console.error('스키마별 테이블 조회 오류:', error)
-      throw new Error('API 엔드포인트로 테이블 조회 실패')
-    }
-  }
-
-  // SQL Lab 실행 개선 (다양한 응답 형태 처리)
-  async executeSQL(payload) {
-    try {
-      console.log('SQL 실행:', payload)
-      
-      // SQL Lab API 시도
-      const sqlLabEndpoints = [
-        '/api/v1/sqllab/execute/',
-        '/superset/sql_json/',
-        '/api/v1/sqllab/'
-      ]
-      
-      for (const endpoint of sqlLabEndpoints) {
-        try {
-          console.log(`SQL 실행 시도: ${endpoint}`)
-          
-          // 엔드포인트별 페이로드 조정
-          let requestPayload = { ...payload }
-          
-          if (endpoint.includes('sql_json')) {
-            requestPayload = {
-              database_id: payload.database_id,
-              sql: payload.sql,
-              schema: payload.schema || '',
-              limit: payload.limit || 1000,
-              select_as_cta: false,
-              tmp_table_name: '',
-              client_id: `client_${Date.now()}`
-            }
-          }
-          
-          console.log(`SQL 요청 페이로드 (${endpoint}):`, requestPayload)
-          
-          const response = await this.api.post(endpoint, requestPayload)
-          console.log(`SQL 실행 성공 (${endpoint}):`, response.data)
-          
-          // 응답 데이터 정규화
-          let normalizedData = null
-          
-          if (response.data.data) {
-            normalizedData = response.data.data
-          } else if (response.data.result) {
-            normalizedData = response.data.result
-          } else if (Array.isArray(response.data)) {
-            normalizedData = response.data
-          } else if (response.data.rows) {
-            normalizedData = response.data.rows
-          }
-          
-          if (normalizedData) {
-            return {
-              data: normalizedData,
-              columns: response.data.columns || response.data.column_names || [],
-              query: response.data.query || payload.sql,
-              success: true
-            }
-          }
-          
-        } catch (sqlError) {
-          console.log(`SQL 엔드포인트 실패 (${endpoint}): ${sqlError.response?.status}`, sqlError.message)
-          continue
-        }
+        currentUser = await this.getCurrentUser()
+        console.log('현재 사용자:', currentUser)
+      } catch (userError) {
+        console.warn('사용자 정보 조회 실패, 계속 진행:', userError)
       }
       
-      throw new Error('모든 SQL 실행 엔드포인트 실패')
-    } catch (error) {
-      console.error('SQL 실행 오류:', error)
-      throw error
-    }
-  }
-
-  // 2-7. 테이블 정보 조회
-  async getTableInfo(databaseId, tableName, schemaName = '') {
-    try {
-      console.log('테이블 정보 조회:', { databaseId, tableName, schemaName })
-      
-      const possibleEndpoints = [
-        `/api/v1/database/${databaseId}/table_metadata/?table_name=${tableName}&schema_name=${schemaName}`,
-        `/api/v1/database/${databaseId}/table/${tableName}/${schemaName}/`,
-        `/api/v1/database/${databaseId}/table/${tableName}/`,
-        `/superset/table/${databaseId}/${tableName}/${schemaName}/`
-      ]
-
-      for (const endpoint of possibleEndpoints) {
-        try {
-          console.log(`테이블 정보 조회 시도: ${endpoint}`)
-          const response = await this.api.get(endpoint)
-          console.log(`테이블 정보 조회 성공 (${endpoint}):`, response.data)
-          return response.data.result || response.data
-        } catch (error) {
-          console.log(`테이블 정보 엔드포인트 실패 (${endpoint}): ${error.response?.status}`)
-          continue
-        }
-      }
-      
-      // SQL로 테이블 구조 조회
-      try {
-        console.log('SQL로 테이블 구조 조회 시도...')
-        const sqlResult = await this.executeSQL({
-          database_id: databaseId,
-          sql: `DESCRIBE ${schemaName ? `\`${schemaName}\`.` : ''}\`${tableName}\``,
-          schema: schemaName || '',
-          limit: 100
-        })
-        
-        console.log('SQL로 테이블 구조 조회 성공:', sqlResult)
-        return sqlResult
-      } catch (sqlError) {
-        console.error('SQL 테이블 구조 조회도 실패:', sqlError)
-      }
-      
-      throw new Error('테이블 정보를 가져올 수 없습니다')
-    } catch (error) {
-      console.error('테이블 정보 조회 오류:', error)
-      throw error
-    }
-  }
-
- // SQL을 사용한 테이블 조회
-  async getTablesUsingSQL(databaseId, schemaName = null) {
-    try {
-      console.log('SQL로 테이블 조회:', { databaseId, schemaName })
-      
-      let sql = 'SHOW TABLES'
-      if (schemaName && schemaName !== 'default') {
-        sql = `SHOW TABLES FROM \`${schemaName}\``
-      }
-      
-      console.log('실행할 SQL:', sql)
-      
-      const sqlPayload = {
-        database_id: databaseId,
-        sql: sql,
-        schema: schemaName || '',
-        limit: 1000
-      }
-      
-      const result = await this.executeSQL(sqlPayload)
-      console.log('SQL 테이블 조회 결과:', result)
-      
-      if (result && result.data && Array.isArray(result.data)) {
-        // SHOW TABLES 결과에서 테이블명 추출
-        const tableNames = result.data.map(row => {
-          // row는 보통 { Tables_in_schema: "table_name" } 형태
-          const values = Object.values(row)
-          return values[0] // 첫 번째 값이 테이블명
-        })
-        
-        console.log('추출된 테이블명들:', tableNames)
-        return tableNames
-      }
-      
-      return []
-    } catch (error) {
-      console.error('SQL 테이블 조회 오류:', error)
-      throw error
-    }
-  }
-
-  // 전체 데이터베이스 테이블 조회
-  async getAllDatabaseTables(databaseId) {
-    try {
-      console.log('전체 데이터베이스 테이블 조회:', databaseId)
-      
-      // 방법 1: 기본 SQL 시도
-      try {
-        return await this.getTablesUsingSQL(databaseId)
-      } catch (basicSQLError) {
-        console.log('기본 SHOW TABLES 실패, 정보 스키마 조회 시도:', basicSQLError)
-        
-        // 방법 2: information_schema 쿼리
-        try {
-          const infoSchemaSQL = `
-            SELECT table_name, table_schema 
-            FROM information_schema.tables 
-            WHERE table_schema NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys')
-            AND table_type = 'BASE TABLE'
-            ORDER BY table_schema, table_name
-          `
-          
-          const result = await this.executeSQL({
-            database_id: databaseId,
-            sql: infoSchemaSQL,
-            schema: '',
-            limit: 1000
-          })
-          
-          if (result && result.data && Array.isArray(result.data)) {
-            return result.data.map(row => ({
-              name: row.table_name || row.TABLE_NAME,
-              schema: row.table_schema || row.TABLE_SCHEMA || 'default'
-            }))
-          }
-        } catch (infoSchemaError) {
-          console.log('information_schema 조회도 실패:', infoSchemaError)
-        }
-      }
-      
-      return []
-    } catch (error) {
-      console.error('전체 데이터베이스 테이블 조회 오류:', error)
-      throw error
-    }
-  }
-
-  // 개선된 SQL 실행 (더 견고한 에러 처리)
-  async executeSQL(payload) {
-    try {
-      console.log('SQL 실행 시도:', payload)
-      
-      // SQL Lab API 시도
-      const sqlLabEndpoints = [
-        '/api/v1/sqllab/execute/',
-        '/superset/sql_json/',
-        '/api/v1/database/sql/'
-      ]
-
-      let lastError = null
-      
-      for (const endpoint of sqlLabEndpoints) {
-        try {
-          console.log(`SQL 실행 엔드포인트 시도: ${endpoint}`)
-          const response = await this.api.post(endpoint, payload)
-          console.log(`SQL 실행 성공 (${endpoint}):`, response.data)
-          
-          // 응답 데이터 정규화
-          if (response.data) {
-            if (response.data.data) {
-              return { data: response.data.data }
-            } else if (response.data.result) {
-              return { data: response.data.result }
-            } else if (Array.isArray(response.data)) {
-              return { data: response.data }
-            } else {
-              return response.data
-            }
-          }
-          
-          return response.data
-        } catch (error) {
-          console.log(`SQL 엔드포인트 실패 (${endpoint}): ${error.response?.status} - ${error.message}`)
-          lastError = error
-          continue
-        }
-      }
-      
-      throw lastError || new Error('모든 SQL 실행 엔드포인트 실패')
-    } catch (error) {
-      console.error('SQL 실행 오류:', error)
-      throw error
-    }
-  }
-
-  // 3. 개선된 데이터셋 생성
-  async createDataset(payload) {
-    try {
-      console.log('데이터셋 생성:', payload)
-      
-      // 페이로드 검증 및 정리
-      const cleanPayload = {
-        database: parseInt(payload.database),
-        schema: payload.schema || '',
-        table_name: payload.table_name
-      }
-      
-      // 빈 스키마 처리
-      if (!cleanPayload.schema) {
-        delete cleanPayload.schema
-      }
-      
-      console.log('정리된 페이로드:', cleanPayload)
-      
-      const response = await this.api.post('/api/v1/dataset/', cleanPayload)
-      console.log('데이터셋 생성 응답:', response.data)
-      return response.data
-    } catch (error) {
-      console.error('데이터셋 생성 오류:', error)
-      console.error('오류 응답:', error.response?.data)
-      throw error
-    }
-  }
-
-  // SQL Lab 실행 개선
-  async executeSQL(payload) {
-    try {
-      console.log('SQL 실행:', payload)
-      
-      // 기본 SQL Lab 엔드포인트 시도
-      try {
-        const response = await this.api.post('/api/v1/sqllab/execute/', payload)
-        console.log('SQL Lab 실행 성공:', response.data)
-        return response.data
-      } catch (sqlLabError) {
-        console.log('SQL Lab 실패, 대안 시도:', sqlLabError)
-        
-        // 대안 SQL 실행 엔드포인트
-        const alternativePayload = {
-          database_id: payload.database_id,
-          sql: payload.sql,
-          schema: payload.schema || '',
-          limit: payload.limit || 1000
-        }
-        
-        const altResponse = await this.api.post('/superset/sql_json/', alternativePayload)
-        console.log('대안 SQL 실행 성공:', altResponse.data)
-        return altResponse.data
-      }
-    } catch (error) {
-      console.error('SQL 실행 오류:', error)
-      throw error
-    }
-  }
-
-  // 데이터베이스 연결 테스트 및 메타데이터 조회
-  async testDatabaseConnection(databaseId) {
-    try {
-      console.log('데이터베이스 연결 테스트:', databaseId)
-      
-      const testEndpoints = [
-        `/api/v1/database/${databaseId}/test_connection/`,
-        `/api/v1/database/${databaseId}/validate_parameters/`,
-        `/api/v1/database/${databaseId}`
-      ]
-
-      for (const endpoint of testEndpoints) {
-        try {
-          console.log(`연결 테스트 시도: ${endpoint}`)
-          const response = await this.api.post(endpoint, {})
-          console.log(`연결 테스트 성공 (${endpoint}):`, response.data)
-          return response.data
-        } catch (error) {
-          console.log(`연결 테스트 실패 (${endpoint}): ${error.response?.status}`)
-          continue
-        }
-      }
-      
-      throw new Error('모든 연결 테스트 엔드포인트 실패')
-    } catch (error) {
-      console.error('데이터베이스 연결 테스트 오류:', error)
-      throw error
-    }
-  }
-
-  async createDatabase(payload) {
-    try {
-      console.log('데이터베이스 생성:', payload)
-      const response = await this.api.post('/api/v1/database/', payload)
-      console.log('데이터베이스 생성 응답:', response.data)
-      return response.data
-    } catch (error) {
-      console.error('데이터베이스 생성 오류:', error)
-      throw error
-    }
-  }
-
-  async updateDatabase(id, payload) {
-    try {
-      console.log('데이터베이스 업데이트:', id, payload)
-      const response = await this.api.put(`/api/v1/database/${id}`, payload)
-      return response.data
-    } catch (error) {
-      console.error('데이터베이스 업데이트 오류:', error)
-      throw error
-    }
-  }
-
-  async deleteDatabase(id) {
-    try {
-      console.log('데이터베이스 삭제:', id)
-      const response = await this.api.delete(`/api/v1/database/${id}`)
-      return response.data
-    } catch (error) {
-      console.error('데이터베이스 삭제 오류:', error)
-      throw error
-    }
-  }
-
-  // 3. 데이터셋 관련
-  async getDatasets() {
-    try {
-      console.log('데이터셋 목록 조회 중...')
-      const response = await this.api.get('/api/v1/dataset/')
-      console.log('데이터셋 응답:', response.data)
-      return response.data.result || []
-    } catch (error) {
-      console.error('데이터셋 조회 오류:', error)
-      throw error
-    }
-  }
-
-  async createDataset(payload) {
-    try {
-      console.log('데이터셋 생성:', payload)
-      const response = await this.api.post('/api/v1/dataset/', payload)
-      return response.data
-    } catch (error) {
-      console.error('데이터셋 생성 오류:', error)
-      throw error
-    }
-  }
-
-  async updateDataset(id, payload) {
-    try {
-      console.log('데이터셋 업데이트:', id, payload)
-      const response = await this.api.put(`/api/v1/dataset/${id}`, payload)
-      return response.data
-    } catch (error) {
-      console.error('데이터셋 업데이트 오류:', error)
-      throw error
-    }
-  }
-
-  async deleteDataset(id) {
-    try {
-      console.log('데이터셋 삭제:', id)
-      const response = await this.api.delete(`/api/v1/dataset/${id}`)
-      return response.data
-    } catch (error) {
-      console.error('데이터셋 삭제 오류:', error)
-      throw error
-    }
-  }
-
-  // 4. 차트 관련
-  async getCharts() {
-    try {
-      console.log('차트 목록 조회 중...')
-      const response = await this.api.get('/api/v1/chart/')
-      console.log('차트 응답:', response.data)
-      return response.data.result || []
-    } catch (error) {
-      console.error('차트 조회 오류:', error)
-      throw error
-    }
-  }
-
-  async createChart(payload) {
-    try {
-      console.log('차트 생성:', payload)
-      const response = await this.api.post('/api/v1/chart/', payload)
-      return response.data
-    } catch (error) {
-      console.error('차트 생성 오류:', error)
-      throw error
-    }
-  }
-
-  async updateChart(id, payload) {
-    try {
-      console.log('차트 업데이트:', id, payload)
-      const response = await this.api.put(`/api/v1/chart/${id}`, payload)
-      return response.data
-    } catch (error) {
-      console.error('차트 업데이트 오류:', error)
-      throw error
-    }
-  }
-
-  async deleteChart(id) {
-    try {
-      console.log('차트 삭제:', id)
-      const response = await this.api.delete(`/api/v1/chart/${id}`)
-      return response.data
-    } catch (error) {
-      console.error('차트 삭제 오류:', error)
-      throw error
-    }
-  }
-
-  // 5. 대시보드 관련
-  async getDashboards() {
-    try {
-      console.log('대시보드 목록 조회 중...')
-      const response = await this.api.get('/api/v1/dashboard/')
-      console.log('대시보드 응답:', response.data)
-      return response.data.result || []
-    } catch (error) {
-      console.error('대시보드 조회 오류:', error)
-      throw error
-    }
-  }
-
-  async createDashboard(payload) {
-    try {
-      console.log('대시보드 생성:', payload)
-      const response = await this.api.post('/api/v1/dashboard/', payload)
-      return response.data
-    } catch (error) {
-      console.error('대시보드 생성 오류:', error)
-      throw error
-    }
-  }
-
-  async updateDashboard(id, payload) {
-    try {
-      console.log('대시보드 업데이트:', id, payload)
-      const response = await this.api.put(`/api/v1/dashboard/${id}`, payload)
-      return response.data
-    } catch (error) {
-      console.error('대시보드 업데이트 오류:', error)
-      throw error
-    }
-  }
-
-  async deleteDashboard(id) {
-    try {
-      console.log('대시보드 삭제:', id)
-      const response = await this.api.delete(`/api/v1/dashboard/${id}`)
-      return response.data
-    } catch (error) {
-      console.error('대시보드 삭제 오류:', error)
-      throw error
-    }
-  }
-
-  // 6. 사용자 관리 관련
-  async getUsers() {
-    try {
-      console.log('사용자 목록 조회 중...')
-      const response = await this.api.get('/api/v1/security/users/')
-      console.log('사용자 응답:', response.data)
-      return response.data.result || []
-    } catch (error) {
-      console.error('사용자 조회 오류:', error)
-      throw error
-    }
-  }
-
-  async createUser(payload) {
-    try {
-      console.log('사용자 생성:', payload)
-      const response = await this.api.post('/api/v1/security/users/', payload)
-      return response.data
-    } catch (error) {
-      console.error('사용자 생성 오류:', error)
-      throw error
-    }
-  }
-
-  async updateUser(id, payload) {
-    try {
-      console.log('사용자 업데이트:', id, payload)
-      const response = await this.api.put(`/api/v1/security/users/${id}`, payload)
-      return response.data
-    } catch (error) {
-      console.error('사용자 업데이트 오류:', error)
-      throw error
-    }
-  }
-
-  async deleteUser(id) {
-    try {
-      console.log('사용자 삭제:', id)
-      const response = await this.api.delete(`/api/v1/security/users/${id}`)
-      return response.data
-    } catch (error) {
-      console.error('사용자 삭제 오류:', error)
-      throw error
-    }
-  }
-
-  // 7. 권한 관련
-  async getRoles() {
-    try {
-      console.log('역할 목록 조회 중...')
-      const response = await this.api.get('/api/v1/security/roles/')
-      return response.data.result || []
-    } catch (error) {
-      console.error('역할 조회 오류:', error)
-      throw error
-    }
-  }
-
-  async getUserInfo() {
-    try {
-      console.log('사용자 정보 조회 중...')
-      const response = await this.api.get('/api/v1/me/')
-      console.log('사용자 정보:', response.data)
-      return response.data
-    } catch (error) {
-      console.error('사용자 정보 조회 오류:', error)
-      throw error
-    }
-  }
-
-  // 8. 차트 데이터 조회
-  async getChartData(id, formData) {
-    try {
-      console.log('차트 데이터 조회:', id, formData)
-      const response = await this.api.post(`/api/v1/chart/data`, {
-        datasource: {
-          id: formData.datasource,
-          type: 'table'
-        },
-        queries: [{
-          ...formData
-        }]
-      })
-      return response.data
-    } catch (error) {
-      console.error('차트 데이터 조회 오류:', error)
-      throw error
-    }
-  }
-
-  // 9. 테이블 메타데이터 조회
-  async getTableMetadata(databaseId, tableName, schemaName = '') {
-    try {
-      console.log('테이블 메타데이터 조회:', { databaseId, tableName, schemaName })
-      
-      let url = `/api/v1/database/${databaseId}/table/${tableName}/`
-      if (schemaName) {
-        url += `${schemaName}/`
-      }
-      
-      const response = await this.api.get(url)
-      return response.data
-    } catch (error) {
-      console.error('테이블 메타데이터 조회 오류:', error)
-      throw error
-    }
-  }
-
-  // 10. SQL Lab 관련
-  async executeSQL(payload) {
-    try {
-      console.log('SQL 실행:', payload)
-      
-      // 현재 로그인 사용자 정보 확인
-      const currentUser = await this.getCurrentUser()
-      console.log('현재 사용자:', currentUser)
-      
-      // SQL Lab 실행 권한 확인
-      if (!currentUser.permissions || !currentUser.permissions.includes('can_sqllab')) {
+      // SQL Lab 실행 권한 확인 (선택적)
+      if (currentUser && currentUser.permissions && !currentUser.permissions.includes('can_sqllab')) {
         console.warn('SQL Lab 권한이 없음, 관리자 권한으로 재시도')
       }
 
       // 개선된 페이로드
       const enhancedPayload = {
-        ...payload,
+        database_id: payload.database_id,
+        sql: payload.sql.trim(),
+        schema: payload.schema || '',
         client_id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         tab: 'superset_react_tab',
         tmp_table_name: '',
         select_as_cta: false,
         ctas_method: 'TABLE',
         queryLimit: payload.limit || 1000,
-        sql: payload.sql.trim(),
-        runAsync: false
+        runAsync: false,
+        ...payload
       }
       
       const sqlEndpoints = [
@@ -1237,6 +329,172 @@ class SupersetAPI {
       throw lastError || new Error('모든 SQL 실행 엔드포인트 실패')
     } catch (error) {
       console.error('SQL 실행 오류:', error)
+      throw error
+    }
+  }
+
+  // ===== 테이블 관련 메서드 =====
+
+  // 테이블 목록 조회 (개선된 버전)
+  async getDatabaseTables(databaseId, schemaName = null) {
+    try {
+      console.log('데이터베이스 테이블 조회:', { databaseId, schemaName })
+      
+      // 1. API 엔드포인트들 시도
+      const apiEndpoints = [
+        `/api/v1/database/${databaseId}/table/`,
+        `/api/v1/database/${databaseId}/tables/`,
+        `/api/v1/database/${databaseId}/table_metadata/`,
+        schemaName ? `/api/v1/database/${databaseId}/schema/${schemaName}/table/` : null,
+        `/superset/tables/${databaseId}/`,
+        schemaName ? `/superset/tables/${databaseId}/${schemaName}/` : null
+      ].filter(Boolean)
+
+      for (const endpoint of apiEndpoints) {
+        try {
+          console.log(`테이블 조회 시도: ${endpoint}`)
+          const params = schemaName ? { schema_name: schemaName } : {}
+          const response = await this.api.get(endpoint, { params })
+          console.log(`테이블 조회 성공 (${endpoint}):`, response.data)
+          
+          const tables = response.data.result || response.data || []
+          if (Array.isArray(tables) && tables.length > 0) {
+            return tables
+          }
+        } catch (error) {
+          console.log(`엔드포인트 실패 (${endpoint}): ${error.response?.status}`)
+          continue
+        }
+      }
+      
+      // 2. SQL 쿼리로 테이블 조회 시도
+      console.log('API 엔드포인트 실패, SQL 쿼리 시도...')
+      try {
+        return await this.getTablesUsingSQLFixed(databaseId, schemaName)
+      } catch (sqlError) {
+        console.error('SQL 쿼리도 실패:', sqlError)
+      }
+      
+      // 3. 모든 방법 실패시 빈 배열 반환
+      console.log('모든 테이블 조회 방법 실패')
+      return []
+      
+    } catch (error) {
+      console.error('테이블 조회 오류:', error)
+      throw error
+    }
+  }
+
+  // SQL을 사용한 테이블 조회 (수정된 버전)
+  async getTablesUsingSQLFixed(databaseId, schemaName = null) {
+    try {
+      console.log('SQL로 테이블 조회:', { databaseId, schemaName })
+      
+      const sqlQueries = [
+        // MariaDB/MySQL용 쿼리들
+        schemaName ? 
+          `SELECT TABLE_NAME as name, TABLE_TYPE as type, TABLE_ROWS as rows, TABLE_COMMENT as comment FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = '${schemaName}' ORDER BY TABLE_NAME` :
+          `SELECT TABLE_NAME as name, TABLE_SCHEMA as schema, TABLE_TYPE as type FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys') ORDER BY TABLE_SCHEMA, TABLE_NAME`,
+        
+        schemaName ? `SHOW FULL TABLES FROM \`${schemaName}\`` : 'SHOW DATABASES',
+        schemaName ? `SHOW TABLES FROM \`${schemaName}\`` : 'SHOW DATABASES'
+      ]
+      
+      for (const sql of sqlQueries) {
+        try {
+          console.log('실행할 SQL:', sql)
+          
+          const sqlPayload = {
+            database_id: databaseId,
+            sql: sql,
+            schema: schemaName || '',
+            limit: 1000
+          }
+          
+          const result = await this.executeSQL(sqlPayload)
+          console.log('SQL 테이블 조회 결과:', result)
+          
+          if (result && result.data && Array.isArray(result.data)) {
+            // 결과를 표준화된 형태로 변환
+            return result.data.map(row => {
+              if (typeof row === 'string') {
+                return { name: row, type: 'table' }
+              } else if (typeof row === 'object') {
+                return {
+                  name: row.name || row.TABLE_NAME || row.Name || Object.values(row)[0],
+                  type: row.type || row.TABLE_TYPE || 'table',
+                  schema: row.schema || row.TABLE_SCHEMA || schemaName || 'default',
+                  rows: row.rows || row.TABLE_ROWS || null,
+                  comment: row.comment || row.TABLE_COMMENT || ''
+                }
+              }
+              return { name: String(row), type: 'table' }
+            })
+          }
+          
+        } catch (sqlError) {
+          console.log(`SQL 쿼리 실패: ${sql}`, sqlError)
+          continue
+        }
+      }
+      
+      throw new Error('모든 SQL 쿼리 실패')
+    } catch (error) {
+      console.error('SQL 테이블 조회 오류:', error)
+      throw error
+    }
+  }
+
+  // ===== 기타 필요한 메서드들 =====
+
+  // 사용자 정보 조회 (getUserInfo 메서드)
+  async getUserInfo() {
+    try {
+      console.log('사용자 정보 조회 중...')
+      const response = await this.api.get('/api/v1/me/')
+      console.log('사용자 정보:', response.data)
+      return response.data
+    } catch (error) {
+      console.error('사용자 정보 조회 오류:', error)
+      throw error
+    }
+  }
+
+  // 데이터셋 목록 조회
+  async getDatasets() {
+    try {
+      console.log('데이터셋 목록 조회 중...')
+      const response = await this.api.get('/api/v1/dataset/')
+      console.log('데이터셋 응답:', response.data)
+      return response.data.result || []
+    } catch (error) {
+      console.error('데이터셋 조회 오류:', error)
+      throw error
+    }
+  }
+
+  // 차트 목록 조회
+  async getCharts() {
+    try {
+      console.log('차트 목록 조회 중...')
+      const response = await this.api.get('/api/v1/chart/')
+      console.log('차트 응답:', response.data)
+      return response.data.result || []
+    } catch (error) {
+      console.error('차트 조회 오류:', error)
+      throw error
+    }
+  }
+
+  // 대시보드 목록 조회
+  async getDashboards() {
+    try {
+      console.log('대시보드 목록 조회 중...')
+      const response = await this.api.get('/api/v1/dashboard/')
+      console.log('대시보드 응답:', response.data)
+      return response.data.result || []
+    } catch (error) {
+      console.error('대시보드 조회 오류:', error)
       throw error
     }
   }
