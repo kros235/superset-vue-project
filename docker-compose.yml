@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # MariaDB 데이터베이스
   mariadb:
@@ -11,7 +9,7 @@ services:
       MYSQL_USER: superset
       MYSQL_PASSWORD: superset123
     ports:
-      - "0.0.0.0:3306:3306"
+      - "3306:3306"
     volumes:
       - mariadb_data:/var/lib/mysql
       - ./database/init:/docker-entrypoint-initdb.d
@@ -29,7 +27,7 @@ services:
     image: redis:7-alpine
     container_name: superset_redis
     ports:
-      - "0.0.0.0:6379:6379"
+      - "6379:6379"
     networks:
       - superset_network
     restart: unless-stopped
@@ -53,7 +51,7 @@ services:
       - FLASK_ENV=development
       - SUPERSET_LOAD_EXAMPLES=no
     ports:
-      - "0.0.0.0:8088:8088"
+      - "8088:8088"
     volumes:
       - ./superset_config.py:/app/superset_config.py
       - superset_data:/app/superset_home
@@ -65,8 +63,7 @@ services:
       redis:
         condition: service_started
     restart: unless-stopped
-    # command 라인 제거 또는 주석처리
-    # command: ["/bin/bash", "/app/superset-init.sh"]
+    command: ["/bin/bash", "/app/superset-init.sh"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8088/health"]
       interval: 30s
@@ -86,7 +83,7 @@ services:
       - HOST=0.0.0.0
       - PORT=8080
     ports:
-      - "0.0.0.0:8080:8080"
+      - "8080:8080"
     volumes:
       - ./vue-frontend:/app
       - /app/node_modules

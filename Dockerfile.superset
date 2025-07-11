@@ -31,28 +31,22 @@ RUN pip list | grep -i mysql
 RUN python -c "import pymysql; print('PyMySQL: OK')" || echo "PyMySQL: Failed"
 RUN python -c "import mysql.connector; print('MySQL Connector: OK')" || echo "MySQL Connector: Failed"
 
-# MySQL 드라이버 설치
-RUN pip install \
-    mysqlclient==2.1.1 \
-    PyMySQL==1.0.2
+# 초기화 스크립트 생성 (단계별로 분리)
+RUN echo '#!/bin/bash' > /app/superset-init.sh && \
+    echo 'set -e' >> /app/superset-init.sh && \
+    echo 'echo "=== Superset 초기화 시작 ==="' >> /app/superset-init.sh && \
+    echo 'while ! mysqladmin ping -h mariadb -u superset -psuperset123 --silent; do' >> /app/superset-init.sh && \
+    echo '    echo "MariaDB 연결 대기..."' >> /app/superset-init.sh && \
+    echo '    sleep 2' >> /app/superset-init.sh && \
+    echo 'done' >> /app/superset-init.sh && \
+    echo 'superset db upgrade' >> /app/superset-init.sh && \
+    echo 'superset fab create-admin --username admin --firstname Admin --lastname User --email admin@admin.com --password admin || echo "계정 존재"' >> /app/superset-init.sh && \
+    echo 'superset init' >> /app/superset-init.sh && \
+    echo 'echo "=== 초기화 완료 ==="' >> /app/superset-init.sh && \
+    echo 'exec superset run -h 0.0.0.0 -p 8088 --with-threads --reload --debugger' >> /app/superset-init.sh
 
-# 초기화 스크립트 추가 (Docker 내에서 생성하여 줄바꿈 문제 방지)
-USER root
-RUN cat > /app/superset-init.sh << 'EOF' && \
-#!/bin/bash
-set -e
-echo "=== Superset 초기화 시작 ==="
-while ! mysqladmin ping -h mariadb -u superset -psuperset123 --silent; do
-    echo "MariaDB 연결 대기..."
-    sleep 2
-done
-superset db upgrade
-superset fab create-admin --username admin --firstname Admin --lastname User --email admin@admin.com --password admin || echo "계정 존재"
-superset init
-echo "=== 초기화 완료 ==="
-exec superset run -h 0.0.0.0 -p 8088 --with-threads --reload --debugger
-EOF
-chmod +x /app/superset-init.sh
+# 스크립트 실행 권한 부여
+RUN chmod +x /app/superset-init.sh
 
 # superset 사용자로 전환
 USER superset
