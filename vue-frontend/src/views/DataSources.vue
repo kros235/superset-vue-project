@@ -903,46 +903,129 @@ export default {
       ]
     }
 
-    const createDatasetFromTable = async (database, table) => {
-      if (table.type === 'info') {
-        message.warning('이 항목은 데이터셋으로 생성할 수 없습니다.')
+const createDatasetFromTable = async (database, table) => {
+      // 시스템 스키마나 정보성 항목은 데이터셋 생성 불가
+      if (table.type === 'info' || 
+          ['information_schema', 'performance_schema', 'mysql', 'sys'].includes(table.schema?.toLowerCase())) {
+        message.warning('시스템 스키마의 테이블은 데이터셋으로 생성할 수 없습니다.')
         return
       }
+      
+      // 로딩 상태 표시
+      const hideLoading = message.loading('데이터셋 생성 중...', 0)
       
       try {
         console.log('데이터셋 생성 시도:', { database, table })
         
+        // 데이터베이스 ID 정확히 추출
+        const databaseId = database.id || database.database_id
+        if (!databaseId) {
+          throw new Error('데이터베이스 ID를 찾을 수 없습니다.')
+        }
+        
+        // 테이블 이름 검증
+        if (!table.name || table.name.trim() === '') {
+          throw new Error('테이블 이름이 유효하지 않습니다.')
+        }
+        
+        // 최소한의 페이로드 구성 (필수 필드만)
         const payload = {
-          database: database.id || database.database_id,
-          schema: table.schema || '',
-          table_name: table.name
+          database: databaseId,
+          schema: table.schema || 'sample_dashboard',
+          table_name: table.name.trim()
         }
         
         console.log('데이터셋 생성 페이로드:', payload)
         
+        // 데이터셋 생성 실행
         const result = await supersetAPI.createDataset(payload)
         console.log('데이터셋 생성 결과:', result)
         
-        message.success(`테이블 ${table.name}에서 데이터셋이 생성되었습니다!`)
+        // 생성된 데이터셋에 추가 메타데이터 업데이트 (선택사항)
+        if (result.result && result.result.id) {
+          try {
+            await supersetAPI.updateDatasetMetadata(result.result.id, {
+              description: `Dataset created from table ${table.name}`,
+              extra: {
+                created_by: 'vue_frontend',
+                created_at: new Date().toISOString()
+              }
+            })
+          } catch (metadataError) {
+            console.warn('메타데이터 업데이트 실패:', metadataError)
+          }
+        }
+        
+        hideLoading()
+        message.success(`테이블 "${table.name}"에서 데이터셋이 성공적으로 생성되었습니다!`)
         showTablesModal.value = false
-        loadData() // 데이터셋 목록 새로고침
+        
+        // 데이터셋 목록 새로고침
+        await loadData()
         
       } catch (error) {
+        hideLoading()
         console.error('데이터셋 생성 오류:', error)
         
-        const errorMsg = error.response?.data?.message || error.message
-        console.error('상세 에러 메시지:', errorMsg)
+        // 에러 메시지 분석 및 사용자 친화적 메시지 구성
+        let userMessage = '데이터셋 생성에 실패했습니다.'
         
-        if (error.response?.status === 422) {
-          if (typeof errorMsg === 'object') {
-            const detailMsg = Object.values(errorMsg).flat().join(', ')
-            message.error(`데이터셋 생성 실패: ${detailMsg}`)
-          } else {
-            message.error(`데이터셋 생성 실패: 테이블 정보가 유효하지 않습니다. (${errorMsg})`)
+        if (error.response) {
+          const status = error.response.status
+          const responseData = error.response.data
+          
+          console.error('HTTP 상태:', status)
+          console.error('응답 데이터:', responseData)
+          
+          if (status === 400) {
+            if (responseData?.message) {
+              if (typeof responseData.message === 'string') {
+                userMessage = `데이터셋 생성 실패: ${responseData.message}`
+              } else if (typeof responseData.message === 'object') {
+                // 필드별 에러 메시지 구성
+                const fieldErrors = []
+                Object.entries(responseData.message).forEach(([field, errors]) => {
+                  if (Array.isArray(errors)) {
+                    fieldErrors.push(`${field}: ${errors.join(', ')}`)
+                  } else {
+                    fieldErrors.push(`${field}: ${errors}`)
+                  }
+                })
+                userMessage = `데이터셋 생성 실패:\n${fieldErrors.join('\n')}`
+              }
+            } else {
+              userMessage = '잘못된 요청입니다. 테이블 정보를 확인해주세요.'
+            }
+          } else if (status === 401) {
+            userMessage = '인증이 필요합니다. 다시 로그인해주세요.'
+          } else if (status === 403) {
+            userMessage = '데이터셋 생성 권한이 없습니다. 관리자에게 문의하세요.'
+          } else if (status === 404) {
+            userMessage = '테이블을 찾을 수 없습니다. 데이터베이스 연결을 확인해주세요.'
+          } else if (status === 409) {
+            userMessage = '같은 이름의 데이터셋이 이미 존재합니다.'
+          } else if (status === 422) {
+            userMessage = '데이터 형식이 올바르지 않습니다. 테이블 스키마를 확인해주세요.'
+          } else if (status >= 500) {
+            userMessage = '서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.'
           }
-        } else {
-          message.error('데이터셋 생성에 실패했습니다.')
+        } else if (error.details) {
+          // 직접 구성한 상세 에러 메시지
+          userMessage = error.message
+        } else if (error.message) {
+          userMessage = error.message
         }
+        
+        // 에러 메시지 표시
+        message.error(userMessage, 5) // 5초 동안 표시
+        
+        // 개발자 콘솔에 상세 정보 출력
+        console.group('데이터셋 생성 에러 상세')
+        console.log('테이블 정보:', table)
+        console.log('데이터베이스 정보:', database)
+        console.log('최종 페이로드:', payload)
+        console.log('에러 객체:', error)
+        console.groupEnd()
       }
     }
 

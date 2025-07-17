@@ -3,68 +3,58 @@ import axios from 'axios'
 
 class SupersetAPI {
   constructor() {
-    console.log('SupersetAPI 초기화 중...')
-    
-    // 프록시를 통한 API 호출 (상대 경로 사용)
     this.api = axios.create({
-      baseURL: '',  // 프록시 사용시 빈 문자열
+      baseURL: process.env.VUE_APP_SUPERSET_URL || 'http://localhost:8088',
       timeout: 30000,
+      withCredentials: true,
       headers: {
-        'Content-Type': 'application/json'
-      },
-      withCredentials: false  // 쿠키 비활성화로 시작
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest'
+      }
     })
 
-    console.log('Superset API 설정 완료 - 프록시 사용')
-
-    // 요청 인터셉터
+    // 요청 인터셉터 - 모든 요청 로깅
     this.api.interceptors.request.use(
       (config) => {
         console.log(`[API 요청] ${config.method?.toUpperCase()} ${config.url}`)
-        
-        // 저장된 토큰이 있으면 헤더에 추가
-        const token = localStorage.getItem('superset_access_token')
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`
+        console.log('요청 헤더:', config.headers)
+        if (config.data) {
+          console.log('요청 데이터:', config.data)
         }
-
-        // CSRF 토큰이 있으면 추가
-        const csrfToken = localStorage.getItem('superset_csrf_token')
-        if (csrfToken) {
-          config.headers['X-CSRFToken'] = csrfToken
-        }
-
         return config
       },
       (error) => {
-        console.error('[요청 인터셉터 오류]:', error)
+        console.error('[API 요청 오류]', error)
         return Promise.reject(error)
       }
     )
 
-    // 응답 인터셉터
+    // 응답 인터셉터 - 모든 응답 로깅
     this.api.interceptors.response.use(
       (response) => {
         console.log(`[API 응답 성공] ${response.status} ${response.config.url}`)
+        console.log('응답 데이터:', response.data)
         return response
       },
-      async (error) => {
-        const status = error.response?.status
-        const url = error.config?.url
+      (error) => {
+        console.error(`[API 응답 오류] ${error.response?.status || 'Network Error'} ${error.config?.url}:`)
         
-        console.error(`[API 응답 오류] ${status} ${url}:`, {
-          message: error.message,
-          code: error.code,
-          response: error.response?.data
-        })
-
-        // 401 오류시 토큰 정리
-        if (status === 401) {
-          localStorage.removeItem('superset_access_token')
-          localStorage.removeItem('superset_refresh_token')
-          localStorage.removeItem('superset_csrf_token')
+        if (error.response) {
+          console.error('응답 상태:', error.response.status)
+          console.error('응답 데이터:', error.response.data)
+          console.error('응답 헤더:', error.response.headers)
+          
+          // 인증 에러 처리
+          if (error.response.status === 401) {
+            console.warn('인증 토큰 만료 또는 무효')
+            // 필요시 로그아웃 처리
+          }
+        } else if (error.request) {
+          console.error('요청 실패:', error.request)
+        } else {
+          console.error('오류 설정:', error.message)
         }
-
+        
         return Promise.reject(error)
       }
     )
@@ -377,25 +367,22 @@ class SupersetAPI {
     }
   }
 
-  // 데이터셋 생성 (핵심 메서드 - 이 메서드가 누락되어 있었음)
+
+// 데이터셋 생성 (올바른 API 스키마 사용)
   async createDataset(payload) {
     try {
       console.log('데이터셋 생성 요청:', payload)
       
-      // 페이로드 검증 및 표준화
-      const standardPayload = {
-        database: parseInt(payload.database) || payload.database,
-        schema: payload.schema || '',
-        table_name: payload.table_name || payload.name,
-        description: payload.description || `Auto-generated dataset for ${payload.table_name || payload.name}`,
-        is_managed_externally: false,
-        external_url: null,
-        extra: JSON.stringify({})
+      // 최소한의 필수 필드만 사용 (Superset API 스키마에 맞춤)
+      const minimalPayload = {
+        database: parseInt(payload.database),
+        schema: payload.schema || null,
+        table_name: payload.table_name
       }
       
-      console.log('표준화된 페이로드:', standardPayload)
+      console.log('최소 페이로드:', minimalPayload)
       
-      const response = await this.api.post('/api/v1/dataset/', standardPayload)
+      const response = await this.api.post('/api/v1/dataset/', minimalPayload)
       console.log('데이터셋 생성 응답:', response.data)
       return response.data
       
@@ -407,9 +394,51 @@ class SupersetAPI {
         console.error('응답 상태:', error.response.status)
         console.error('응답 데이터:', error.response.data)
         console.error('응답 헤더:', error.response.headers)
+        
+        // 상세 에러 메시지 추출
+        const errorMessage = error.response.data?.message
+        if (errorMessage && typeof errorMessage === 'object') {
+          console.error('필드별 에러:', errorMessage)
+          
+          // 필드별 에러 메시지 구성
+          const fieldErrors = []
+          Object.entries(errorMessage).forEach(([field, errors]) => {
+            if (Array.isArray(errors)) {
+              fieldErrors.push(`${field}: ${errors.join(', ')}`)
+            } else {
+              fieldErrors.push(`${field}: ${errors}`)
+            }
+          })
+          
+          const detailedError = new Error(`데이터셋 생성 실패: ${fieldErrors.join('; ')}`)
+          detailedError.details = errorMessage
+          throw detailedError
+        }
       }
       
       throw error
+    }
+  }
+
+  // 데이터셋 생성 후 추가 정보 업데이트 (선택사항)
+  async updateDatasetMetadata(datasetId, metadata) {
+    try {
+      console.log('데이터셋 메타데이터 업데이트:', datasetId, metadata)
+      
+      const updatePayload = {
+        description: metadata.description || null,
+        extra: metadata.extra ? JSON.stringify(metadata.extra) : null
+      }
+      
+      const response = await this.api.put(`/api/v1/dataset/${datasetId}`, updatePayload)
+      console.log('메타데이터 업데이트 응답:', response.data)
+      return response.data
+      
+    } catch (error) {
+      console.error('메타데이터 업데이트 오류:', error)
+      // 메타데이터 업데이트 실패는 치명적이지 않으므로 warning으로 처리
+      console.warn('메타데이터 업데이트에 실패했지만 데이터셋 생성은 성공했습니다.')
+      return null
     }
   }
 
@@ -465,14 +494,14 @@ class SupersetAPI {
     }
   }
 
-  // 테이블 정보 조회 (테이블 스키마 확인용)
+  // 테이블 정보 조회 메서드 개선
   async getTableInfo(databaseId, tableName, schemaName = '') {
     try {
       console.log('테이블 정보 조회:', databaseId, tableName, schemaName)
       
-      const url = schemaName 
-        ? `/api/v1/database/${databaseId}/table/${tableName}/${schemaName}/`
-        : `/api/v1/database/${databaseId}/table/${tableName}/`
+      // URL 구성
+      const schemaPath = schemaName ? `/${encodeURIComponent(schemaName)}` : ''
+      const url = `/api/v1/database/${databaseId}/table/${encodeURIComponent(tableName)}${schemaPath}/`
       
       const response = await this.api.get(url)
       console.log('테이블 정보 응답:', response.data)
@@ -480,6 +509,39 @@ class SupersetAPI {
       
     } catch (error) {
       console.error('테이블 정보 조회 오류:', error)
+      
+      // 대체 방법: SQL로 컬럼 정보 조회
+      try {
+        console.log('SQL로 컬럼 정보 조회 시도')
+        const sql = schemaName 
+          ? `DESCRIBE \`${schemaName}\`.\`${tableName}\``
+          : `DESCRIBE \`${tableName}\``
+        
+        const result = await this.executeSQL({
+          database_id: databaseId,
+          sql: sql,
+          schema: schemaName || '',
+          limit: 1000
+        })
+        
+        if (result && result.data) {
+          // DESCRIBE 결과를 컬럼 정보로 변환
+          const columns = result.data.map(row => ({
+            name: row.Field || row.field,
+            type: row.Type || row.type,
+            is_dttm: (row.Type || row.type || '').toLowerCase().includes('timestamp') || 
+                     (row.Type || row.type || '').toLowerCase().includes('datetime'),
+            description: null,
+            python_date_format: null
+          }))
+          
+          return { columns }
+        }
+        
+      } catch (sqlError) {
+        console.error('SQL 컬럼 조회도 실패:', sqlError)
+      }
+      
       throw error
     }
   }
@@ -835,6 +897,78 @@ class SupersetAPI {
     } catch (error) {
       console.error('권한 확인 오류:', error)
       return false
+    }
+  }
+
+  // API 스키마 확인을 위한 유틸리티 메서드들
+  
+  // 데이터셋 API 스키마 확인
+  async getDatasetSchema() {
+    try {
+      console.log('데이터셋 API 스키마 확인 중...')
+      const response = await this.api.get('/api/v1/dataset/_info')
+      console.log('데이터셋 스키마:', response.data)
+      return response.data
+    } catch (error) {
+      console.error('데이터셋 스키마 확인 오류:', error)
+      return null
+    }
+  }
+  
+  // 현재 사용자 정보 확인
+  async getCurrentUser() {
+    try {
+      console.log('현재 사용자 정보 확인 중...')
+      const response = await this.api.get('/api/v1/me/')
+      console.log('현재 사용자:', response.data)
+      return response.data
+    } catch (error) {
+      console.error('사용자 정보 확인 오류:', error)
+      return null
+    }
+  }
+  
+  // 권한 확인
+  async checkPermissions() {
+    try {
+      console.log('권한 확인 중...')
+      const response = await this.api.get('/api/v1/security/permissions')
+      console.log('사용자 권한:', response.data)
+      return response.data
+    } catch (error) {
+      console.error('권한 확인 오류:', error)
+      return null
+    }
+  }
+  
+  // 간단한 데이터셋 생성 테스트
+  async testDatasetCreation() {
+    try {
+      console.log('데이터셋 생성 테스트 시작...')
+      
+      // 스키마 확인
+      const schema = await this.getDatasetSchema()
+      if (schema && schema.add_columns) {
+        console.log('데이터셋 생성 시 사용 가능한 필드:', Object.keys(schema.add_columns))
+      }
+      
+      // 사용자 정보 확인
+      const user = await this.getCurrentUser()
+      if (user) {
+        console.log('현재 사용자 권한:', user.roles)
+      }
+      
+      return {
+        schema: schema,
+        user: user,
+        canCreateDataset: user && user.roles && user.roles.some(role => 
+          role.name === 'Admin' || role.name === 'Alpha' || role.name === 'sql_lab'
+        )
+      }
+      
+    } catch (error) {
+      console.error('데이터셋 생성 테스트 오류:', error)
+      return null
     }
   }
 }
