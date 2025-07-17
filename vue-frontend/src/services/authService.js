@@ -13,8 +13,14 @@ class AuthService {
     try {
       console.log('AuthService 로그인 시도:', username)
       
-      const result = await supersetAPI.login(username, password)
-      
+      // credentials 객체 형태로 전달
+      const credentials = {
+        username: username,
+        password: password
+      }
+    
+      const result = await supersetAPI.login(credentials)
+    
       if (result && result.access_token) {
         // 사용자 정보 가져오기 시도
         try {
@@ -33,33 +39,43 @@ class AuthService {
             roles: username === 'admin' ? [{ id: 1, name: 'Admin' }] : [{ id: 2, name: 'Public' }]
           }
         }
-        
+      
         // 기본 역할 설정
         if (username === 'admin') {
           this.userRoles = [{ id: 1, name: 'Admin' }]
         } else {
           this.userRoles = [{ id: 2, name: 'Public' }]
         }
-        
+      
         // 기본 권한 설정
         this.permissions = []
-        
+      
         return {
           success: true,
           user: this.currentUser,
           message: '로그인 성공'
         }
       }
-      
+    
       return {
         success: false,
         message: '로그인에 실패했습니다.'
       }
     } catch (error) {
       console.error('AuthService login failed:', error)
+    
+      // 에러 메시지 개선
+      let errorMessage = '로그인에 실패했습니다.'
+    
+      if (error.message) {
+        errorMessage = error.message
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message
+      }
+    
       return {
         success: false,
-        message: error.response?.data?.message || '로그인에 실패했습니다.'
+        message: errorMessage
       }
     }
   }
