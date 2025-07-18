@@ -103,17 +103,44 @@
               <template v-else-if="column.key === 'schema'">
                 <a-typography-text code>{{ record.schema || 'default' }}</a-typography-text>
               </template>
+
               <template v-else-if="column.key === 'actions'">
                 <a-space>
-                  <a-button size="small" @click="viewDataset(record)">
+                  <a-button size="small" @click="viewDataset(record)" type="primary" ghost>
+                    <template #icon>
+                      <EyeOutlined />
+                    </template>
                     보기
                   </a-button>
                   <a-button size="small" @click="editDataset(record)">
+                    <template #icon>
+                      <EditOutlined />
+                    </template>
                     편집
                   </a-button>
-                  <a-button size="small" @click="createChartFromDataset(record)">
-                    차트 생성
-                  </a-button>
+                  <a-dropdown>
+                    <template #overlay>
+                      <a-menu class="dataset-action-menu">
+                        <a-menu-item @click="createChartFromDataset(record)">
+                          <BarChartOutlined />
+                          Vue.js에서 차트 생성
+                        </a-menu-item>
+                        <a-menu-item @click="openSupersetExplore(record)">
+                          <LinkOutlined />
+                          Superset에서 차트 생성
+                        </a-menu-item>
+                        <a-menu-divider />
+                        <a-menu-item @click="deleteDataset(record)" danger>
+                          <DeleteOutlined />
+                          삭제
+                        </a-menu-item>
+                      </a-menu>
+                    </template>
+                    <a-button size="small">
+                      차트 생성
+                      <DownOutlined />
+                    </a-button>
+                  </a-dropdown>
                 </a-space>
               </template>
             </template>
@@ -455,12 +482,29 @@
       </div>
       <a-empty v-else description="데이터가 없습니다" />
     </a-modal>
+
+    <!-- 데이터셋 상세 보기 모달 -->
+    <DatasetDetailModal
+      v-model:visible="showDatasetDetailModal"
+      :dataset="selectedDatasetForDetail"
+      @close="handleDatasetDetailClose"
+    />
+
+    <!-- 데이터셋 편집 모달 -->
+    <DatasetEditModal
+      v-model:visible="showDatasetEditModal"
+      :dataset="selectedDatasetForEdit"
+      @close="handleDatasetEditClose"
+      @saved="handleDatasetSaved"
+    />
   </div>
 </template>
 
 <script>
 import { ref, computed, onMounted, watch } from 'vue'
 import { message } from 'ant-design-vue'
+import { useRouter } from 'vue-router'
+import { Modal } from 'ant-design-vue'
 import { 
   PlusOutlined, 
   ReloadOutlined, 
@@ -468,9 +512,21 @@ import {
   TableOutlined, 
   SearchOutlined,
   EyeOutlined,
-  LinkOutlined
+  EditOutlined,
+  BarChartOutlined,
+  LinkOutlined,
+  DeleteOutlined,
+  DownOutlined
 } from '@ant-design/icons-vue'
 import supersetAPI from '@/services/supersetAPI'
+
+// 서비스
+import authService from '../services/authService'
+
+// 컴포넌트
+import DatasetDetailModal from '../components/dataset/DatasetDetailModal.vue'
+import DatasetEditModal from '../components/dataset/DatasetEditModal.vue'
+
 
 export default {
   name: 'DataSources',
@@ -481,13 +537,20 @@ export default {
     TableOutlined, 
     SearchOutlined,
     EyeOutlined,
-    LinkOutlined
+    EditOutlined,
+    BarChartOutlined,
+    LinkOutlined,
+    DeleteOutlined,
+    DownOutlined,
+    DatasetDetailModal,
+    DatasetEditModal
   },
   setup() {
     // 기본 데이터
     const loading = ref(false)
     const databases = ref([])
     const datasets = ref([])
+    const router = useRouter()
 
     // 데이터베이스 모달
     const showDatabaseModal = ref(false)
@@ -1150,19 +1213,143 @@ const createDatasetFromTable = async (database, table) => {
       }
     }
 
+// ===== 데이터셋 관련 기능 구현 =====
+    
+    // 데이터셋 상세 보기 모달 상태
+    const showDatasetDetailModal = ref(false)
+    const selectedDatasetForDetail = ref(null)
+    
+    // 데이터셋 편집 모달 상태
+    const showDatasetEditModal = ref(false)
+    const selectedDatasetForEdit = ref(null)
+
+    // 데이터셋 상세 보기 (구현됨)
     const viewDataset = (dataset) => {
       console.log('View dataset:', dataset)
-      message.info('데이터셋 상세 보기 기능은 구현 예정입니다.')
+      selectedDatasetForDetail.value = dataset
+      showDatasetDetailModal.value = true
     }
 
+    // 데이터셋 편집 (구현됨)
     const editDataset = (dataset) => {
       console.log('Edit dataset:', dataset)
-      message.info('데이터셋 편집 기능은 구현 예정입니다.')
+      selectedDatasetForEdit.value = dataset
+      showDatasetEditModal.value = true
     }
 
+    // 데이터셋으로부터 차트 생성 (구현됨)
     const createChartFromDataset = (dataset) => {
       console.log('Create chart from dataset:', dataset)
-      message.info('차트 생성 기능은 구현 예정입니다.')
+      
+      // 권한 확인
+      if (!authService.canCreateChart()) {
+        message.error('차트 생성 권한이 없습니다.')
+        return
+      }
+
+      try {
+        // 차트 빌더 페이지로 이동하면서 데이터셋 정보 전달
+        router.push({
+          name: 'ChartBuilder',
+          query: {
+            datasetId: dataset.id,
+            datasetName: dataset.table_name,
+            schema: dataset.schema || 'default'
+          }
+        })
+        
+        message.success(`${dataset.table_name} 데이터셋으로 차트를 생성합니다.`)
+      } catch (error) {
+        console.error('차트 생성 페이지 이동 오류:', error)
+        message.error('차트 생성 페이지로 이동 중 오류가 발생했습니다.')
+      }
+    }
+
+    // 데이터셋 상세 모달 닫기 핸들러
+    const handleDatasetDetailClose = () => {
+      showDatasetDetailModal.value = false
+      selectedDatasetForDetail.value = null
+    }
+
+    // 데이터셋 편집 모달 닫기 핸들러
+    const handleDatasetEditClose = () => {
+      showDatasetEditModal.value = false
+      selectedDatasetForEdit.value = null
+    }
+
+    // 데이터셋 편집 저장 핸들러
+    const handleDatasetSaved = (updatedDataset) => {
+      console.log('데이터셋이 업데이트됨:', updatedDataset)
+      
+      // 로컬 데이터셋 목록 업데이트
+      const index = datasets.value.findIndex(d => d.id === updatedDataset.id)
+      if (index !== -1) {
+        datasets.value[index] = { ...datasets.value[index], ...updatedDataset }
+      }
+      
+      message.success('데이터셋 정보가 업데이트되었습니다.')
+    }
+
+    // 데이터셋 삭제 (추가 기능)
+    const deleteDataset = async (dataset) => {
+      try {
+        await new Promise((resolve) => {
+          Modal.confirm({
+            title: '데이터셋 삭제',
+            content: `'${dataset.table_name}' 데이터셋을 정말 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`,
+            okText: '삭제',
+            okType: 'danger',
+            cancelText: '취소',
+            onOk: resolve,
+            onCancel: () => {
+              throw new Error('사용자 취소')
+            }
+          })
+        })
+
+        await supersetAPI.deleteDataset(dataset.id)
+        message.success('데이터셋이 삭제되었습니다.')
+        
+        // 로컬 목록에서 제거
+        const index = datasets.value.findIndex(d => d.id === dataset.id)
+        if (index !== -1) {
+          datasets.value.splice(index, 1)
+        }
+        
+      } catch (error) {
+        if (error.message !== '사용자 취소') {
+          console.error('데이터셋 삭제 오류:', error)
+          message.error('데이터셋 삭제에 실패했습니다.')
+        }
+      }
+    }
+
+    // 차트 빌더에서 직접 Superset Explore 페이지 열기 (대안 방법)
+    const openSupersetExplore = (dataset) => {
+      const supersetURL = process.env.VUE_APP_SUPERSET_URL || 'http://localhost:8088'
+      const exploreUrl = `${supersetURL}/explore/?datasource_type=table&datasource_id=${dataset.id}`
+      
+      window.open(exploreUrl, '_blank')
+      message.info('Superset 차트 생성 페이지가 새 탭에서 열렸습니다.')
+    }
+
+    // return 문에 추가할 항목들
+    const additionalReturns = {
+      // 데이터셋 모달 상태
+      showDatasetDetailModal,
+      selectedDatasetForDetail,
+      showDatasetEditModal,
+      selectedDatasetForEdit,
+      
+      // 업데이트된 메서드들
+      viewDataset,
+      editDataset,
+      createChartFromDataset,
+      deleteDataset,
+      handleDatasetDetailClose,
+      handleDatasetEditClose,
+      handleDatasetSaved,
+      openSupersetExplore
     }
 
     const handleTabChange = (activeKey) => {
@@ -1219,6 +1406,12 @@ const createDatasetFromTable = async (database, table) => {
       previewTableSchema,
       tablePreviewData,
       tablePreviewColumns,
+
+      // ✅ 새로 추가되는 데이터셋 모달 상태
+      showDatasetDetailModal,
+      selectedDatasetForDetail,
+      showDatasetEditModal,
+      selectedDatasetForEdit,
       
       // computed
       availableSchemas,
@@ -1252,9 +1445,18 @@ const createDatasetFromTable = async (database, table) => {
       formatDate,
       editDatabase,
       deleteDatabase,
+
+      // ✅ 새로 추가되는 데이터셋 관련 메서드들
       viewDataset,
       editDataset,
       createChartFromDataset,
+      deleteDataset,
+      handleDatasetDetailClose,
+      handleDatasetEditClose,
+      handleDatasetSaved,
+      openSupersetExplore,
+      
+      // 기존 methods (그대로 유지)
       handleTabChange,
       openSupersetUI
     }
@@ -1333,5 +1535,83 @@ const createDatasetFromTable = async (database, table) => {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #a1a1a1;
+}
+
+/* 액션 버튼 스타일링 */
+.dataset-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.dataset-actions .ant-btn {
+  min-width: 60px;
+}
+
+/* 데이터셋 테이블 행 호버 효과 */
+.ant-table-tbody > tr:hover {
+  background-color: #f5f5f5;
+}
+
+/* 모달 내 로딩 컨테이너 */
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  min-height: 200px;
+}
+
+.loading-container p {
+  margin-top: 16px;
+  color: #666;
+  font-size: 14px;
+}
+
+/* 액션 드롭다운 메뉴 아이템 */
+.dataset-action-menu .ant-dropdown-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dataset-action-menu .ant-dropdown-menu-item .anticon {
+  font-size: 14px;
+}
+
+/* 데이터셋 정보 카드 */
+.dataset-info-card {
+  margin-bottom: 16px;
+}
+
+.dataset-info-card .ant-card-head {
+  border-bottom: 1px solid #f0f0f0;
+}
+
+/* 반응형 디자인 */
+@media (max-width: 768px) {
+  .dataset-actions {
+    flex-direction: column;
+    gap: 4px;
+  }
+  
+  .dataset-actions .ant-btn {
+    width: 100%;
+    min-width: auto;
+  }
+}
+
+/* 테이블 스크롤 영역 스타일 */
+.ant-table-body {
+  overflow-x: auto;
+}
+
+/* 긴 텍스트 말줄임 처리 */
+.text-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
 }
 </style>

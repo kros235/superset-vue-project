@@ -106,6 +106,7 @@ import ChartTypeSelection from '../components/chart-builder/ChartTypeSelection.v
 import ChartConfiguration from '../components/chart-builder/ChartConfiguration.vue'
 import ChartDetails from '../components/chart-builder/ChartDetails.vue'
 import ChartPreview from '../components/chart-builder/ChartPreview.vue'
+import { useRoute } from 'vue-router'
 
 export default defineComponent({
   name: 'ChartBuilderView',
@@ -118,6 +119,7 @@ export default defineComponent({
     ChartPreview
   },
   setup () {
+
     const router = useRouter()
 
     const currentStep = ref(0)
@@ -244,13 +246,56 @@ export default defineComponent({
       }
     }
 
-    onMounted(() => {
+    const handleDatasetChange = async (datasetId) => {
+      const dataset = datasets.value.find(d => d.id === datasetId)
+      selectedDataset.value = dataset
+      chartConfig.value.datasource_id = datasetId
+      
+      try {
+        await loadDatasetColumns(datasetId)
+        console.log('데이터셋 변경됨:', dataset)
+      } catch (error) {
+        console.error('데이터셋 컬럼 로드 오류:', error)
+        message.error('데이터셋 컬럼 정보를 불러오는 중 오류가 발생했습니다.')
+      }
+    }
+
+    onMounted(async () => {
       if (!canCreateChart.value) {
         message.error('차트 생성 권한이 없습니다.')
-        router.push('/')
         return
       }
-      loadDatasets()
+    
+      // 데이터셋 목록 로드
+      await loadDatasets()
+    
+      // URL 쿼리 파라미터에서 데이터셋 정보 확인
+      if (route.query.datasetId) {
+        const datasetId = parseInt(route.query.datasetId)
+        const datasetName = route.query.datasetName
+        const schema = route.query.schema
+        
+        console.log('쿼리 파라미터로 전달된 데이터셋 정보:', {
+          datasetId,
+          datasetName,
+          schema
+        })
+    
+        // 해당 데이터셋이 목록에 있는지 확인
+        const targetDataset = datasets.value.find(d => d.id === datasetId)
+        if (targetDataset) {
+          // 자동으로 데이터셋 선택
+          await handleDatasetChange(datasetId)
+          message.success(`${datasetName} 데이터셋이 선택되었습니다.`)
+          
+          // 1단계에서 2단계로 자동 진행
+          if (currentStep.value === 0) {
+            currentStep.value = 1
+          }
+        } else {
+          message.warning(`데이터셋 ID ${datasetId}를 찾을 수 없습니다.`)
+        }
+      }
     })
 
     return {

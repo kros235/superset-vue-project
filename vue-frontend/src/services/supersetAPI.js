@@ -420,25 +420,16 @@ class SupersetAPI {
     }
   }
 
-  // 데이터셋 생성 후 추가 정보 업데이트 (선택사항)
-  async updateDatasetMetadata(datasetId, metadata) {
+  // 데이터셋 업데이트
+  async updateDataset(datasetId, payload) {
     try {
-      console.log('데이터셋 메타데이터 업데이트:', datasetId, metadata)
-      
-      const updatePayload = {
-        description: metadata.description || null,
-        extra: metadata.extra ? JSON.stringify(metadata.extra) : null
-      }
-      
-      const response = await this.api.put(`/api/v1/dataset/${datasetId}`, updatePayload)
-      console.log('메타데이터 업데이트 응답:', response.data)
+      console.log(`데이터셋 업데이트: ${datasetId}`, payload)
+      const response = await this.api.put(`/api/v1/dataset/${datasetId}`, payload)
+      console.log('데이터셋 업데이트 응답:', response.data)
       return response.data
-      
     } catch (error) {
-      console.error('메타데이터 업데이트 오류:', error)
-      // 메타데이터 업데이트 실패는 치명적이지 않으므로 warning으로 처리
-      console.warn('메타데이터 업데이트에 실패했지만 데이터셋 생성은 성공했습니다.')
-      return null
+      console.error('데이터셋 업데이트 오류:', error)
+      throw error
     }
   }
 
@@ -458,7 +449,7 @@ class SupersetAPI {
   // 데이터셋 삭제
   async deleteDataset(datasetId) {
     try {
-      console.log('데이터셋 삭제:', datasetId)
+      console.log(`데이터셋 삭제: ${datasetId}`)
       const response = await this.api.delete(`/api/v1/dataset/${datasetId}`)
       console.log('데이터셋 삭제 응답:', response.data)
       return response.data
@@ -466,6 +457,36 @@ class SupersetAPI {
       console.error('데이터셋 삭제 오류:', error)
       throw error
     }
+  }
+
+  // 데이터셋 샘플 데이터 조회
+  async getDatasetSampleData(datasetId, limit = 100) {
+    try {
+      console.log(`데이터셋 샘플 데이터 조회: ${datasetId}`)
+      const payload = {
+        datasource: `${datasetId}__table`,
+        viz_type: 'table',
+        form_data: {
+          query_mode: 'raw',
+          all_columns: [],
+          row_limit: limit,
+          order_desc: true
+        }
+      }
+      
+      const response = await this.api.post('/api/v1/chart/data', payload)
+      console.log('샘플 데이터 응답:', response.data)
+      return response.data
+    } catch (error) {
+      console.error('샘플 데이터 조회 오류:', error)
+      throw error
+    }
+  }
+
+  // 데이터셋으로부터 차트 생성 (차트 빌더로 리다이렉트를 위한 URL 생성)
+  getChartBuilderUrl(datasetId) {
+    const baseUrl = process.env.VUE_APP_SUPERSET_URL || 'http://localhost:8088'
+    return `${baseUrl}/explore/?datasource_type=table&datasource_id=${datasetId}`
   }
 
   // 특정 데이터셋 상세 조회
@@ -481,15 +502,43 @@ class SupersetAPI {
     }
   }
 
+  // ===== 데이터셋 상세 조회 및 관리 =====
+  
+  // 데이터셋 상세 정보 조회
+  async getDatasetDetail(datasetId) {
+    try {
+      console.log(`데이터셋 상세 정보 조회: ${datasetId}`)
+      const response = await this.api.get(`/api/v1/dataset/${datasetId}`)
+      console.log('데이터셋 상세 정보:', response.data)
+      return response.data.result
+    } catch (error) {
+      console.error('데이터셋 상세 조회 오류:', error)
+      throw error
+    }
+  }
+
   // 데이터셋 컬럼 정보 조회
   async getDatasetColumns(datasetId) {
     try {
-      console.log('데이터셋 컬럼 조회:', datasetId)
+      console.log(`데이터셋 컬럼 조회: ${datasetId}`)
       const response = await this.api.get(`/api/v1/dataset/${datasetId}`)
-      console.log('데이터셋 컬럼 응답:', response.data)
+      console.log('데이터셋 컬럼 정보:', response.data.result.columns)
       return response.data.result.columns || []
     } catch (error) {
       console.error('데이터셋 컬럼 조회 오류:', error)
+      throw error
+    }
+  }
+
+  // 데이터셋 메트릭 정보 조회
+  async getDatasetMetrics(datasetId) {
+    try {
+      console.log(`데이터셋 메트릭 조회: ${datasetId}`)
+      const response = await this.api.get(`/api/v1/dataset/${datasetId}`)
+      console.log('데이터셋 메트릭 정보:', response.data.result.metrics)
+      return response.data.result.metrics || []
+    } catch (error) {
+      console.error('데이터셋 메트릭 조회 오류:', error)
       throw error
     }
   }
@@ -546,17 +595,25 @@ class SupersetAPI {
     }
   }
 
-  // ===== 차트 관련 메서드 =====
+  // ===== 차트 관련 메서드 확장 =====
   
-  // 차트 목록 조회
-  async getCharts() {
+  // 차트 목록 조회 (필터링 지원)
+  async getCharts(filters = {}) {
     try {
-      console.log('차트 목록 조회 중...')
-      const response = await this.api.get('/api/v1/chart/')
-      console.log('차트 응답:', response.data)
+      console.log('차트 목록 조회:', filters)
+      const params = new URLSearchParams()
+      
+      if (filters.page) params.append('q', `(page:${filters.page})`)
+      if (filters.page_size) params.append('q', `(page_size:${filters.page_size})`)
+      if (filters.datasource_id) {
+        params.append('q', `(filters:!((col:datasource_id,opr:eq,value:${filters.datasource_id})))`)
+      }
+      
+      const response = await this.api.get(`/api/v1/chart/?${params.toString()}`)
+      console.log('차트 목록 응답:', response.data)
       return response.data.result || []
     } catch (error) {
-      console.error('차트 조회 오류:', error)
+      console.error('차트 목록 조회 오류:', error)
       throw error
     }
   }
@@ -565,11 +622,30 @@ class SupersetAPI {
   async createChart(payload) {
     try {
       console.log('차트 생성 요청:', payload)
-      const response = await this.api.post('/api/v1/chart/', payload)
+      
+      // 차트 생성에 필요한 최소한의 payload 구성
+      const chartPayload = {
+        slice_name: payload.slice_name || '새 차트',
+        description: payload.description || '',
+        viz_type: payload.viz_type || 'table',
+        datasource_id: payload.datasource_id,
+        datasource_type: 'table',
+        params: JSON.stringify(payload.params || {}),
+        query_context: JSON.stringify(payload.query_context || {}),
+        cache_timeout: payload.cache_timeout || null
+      }
+      
+      console.log('차트 생성 페이로드:', chartPayload)
+      
+      const response = await this.api.post('/api/v1/chart/', chartPayload)
       console.log('차트 생성 응답:', response.data)
       return response.data
     } catch (error) {
       console.error('차트 생성 오류:', error)
+      if (error.response) {
+        console.error('응답 상태:', error.response.status)
+        console.error('응답 데이터:', error.response.data)
+      }
       throw error
     }
   }
@@ -600,15 +676,189 @@ class SupersetAPI {
     }
   }
 
-  // 차트 데이터 조회 (차트 미리보기용)
-  async getChartData(payload) {
+
+// ===== 데이터셋 상세 조회 및 관리 =====
+  
+  // 데이터셋 상세 정보 조회
+  async getDatasetDetail(datasetId) {
     try {
-      console.log('차트 데이터 조회 요청:', payload)
+      console.log(`데이터셋 상세 정보 조회: ${datasetId}`)
+      const response = await this.api.get(`/api/v1/dataset/${datasetId}`)
+      console.log('데이터셋 상세 정보:', response.data)
+      return response.data.result
+    } catch (error) {
+      console.error('데이터셋 상세 조회 오류:', error)
+      throw error
+    }
+  }
+
+  // 데이터셋 컬럼 정보 조회
+  async getDatasetColumns(datasetId) {
+    try {
+      console.log(`데이터셋 컬럼 조회: ${datasetId}`)
+      const response = await this.api.get(`/api/v1/dataset/${datasetId}`)
+      console.log('데이터셋 컬럼 정보:', response.data.result.columns)
+      return response.data.result.columns || []
+    } catch (error) {
+      console.error('데이터셋 컬럼 조회 오류:', error)
+      throw error
+    }
+  }
+
+  // 데이터셋 메트릭 정보 조회
+  async getDatasetMetrics(datasetId) {
+    try {
+      console.log(`데이터셋 메트릭 조회: ${datasetId}`)
+      const response = await this.api.get(`/api/v1/dataset/${datasetId}`)
+      console.log('데이터셋 메트릭 정보:', response.data.result.metrics)
+      return response.data.result.metrics || []
+    } catch (error) {
+      console.error('데이터셋 메트릭 조회 오류:', error)
+      throw error
+    }
+  }
+
+  // 데이터셋 업데이트
+  async updateDataset(datasetId, payload) {
+    try {
+      console.log(`데이터셋 업데이트: ${datasetId}`, payload)
+      const response = await this.api.put(`/api/v1/dataset/${datasetId}`, payload)
+      console.log('데이터셋 업데이트 응답:', response.data)
+      return response.data
+    } catch (error) {
+      console.error('데이터셋 업데이트 오류:', error)
+      throw error
+    }
+  }
+
+  // 데이터셋 삭제
+  async deleteDataset(datasetId) {
+    try {
+      console.log(`데이터셋 삭제: ${datasetId}`)
+      const response = await this.api.delete(`/api/v1/dataset/${datasetId}`)
+      console.log('데이터셋 삭제 응답:', response.data)
+      return response.data
+    } catch (error) {
+      console.error('데이터셋 삭제 오류:', error)
+      throw error
+    }
+  }
+
+  // 데이터셋 샘플 데이터 조회
+  async getDatasetSampleData(datasetId, limit = 100) {
+    try {
+      console.log(`데이터셋 샘플 데이터 조회: ${datasetId}`)
+      const payload = {
+        datasource: `${datasetId}__table`,
+        viz_type: 'table',
+        form_data: {
+          query_mode: 'raw',
+          all_columns: [],
+          row_limit: limit,
+          order_desc: true
+        }
+      }
+      
+      const response = await this.api.post('/api/v1/chart/data', payload)
+      console.log('샘플 데이터 응답:', response.data)
+      return response.data
+    } catch (error) {
+      console.error('샘플 데이터 조회 오류:', error)
+      throw error
+    }
+  }
+
+  // 데이터셋으로부터 차트 생성 (차트 빌더로 리다이렉트를 위한 URL 생성)
+  getChartBuilderUrl(datasetId) {
+    const baseUrl = process.env.VUE_APP_SUPERSET_URL || 'http://localhost:8088'
+    return `${baseUrl}/explore/?datasource_type=table&datasource_id=${datasetId}`
+  }
+
+  // ===== 차트 관련 메서드 확장 =====
+  
+  // 차트 목록 조회 (필터링 지원)
+  async getCharts(filters = {}) {
+    try {
+      console.log('차트 목록 조회:', filters)
+      const params = new URLSearchParams()
+      
+      if (filters.page) params.append('q', `(page:${filters.page})`)
+      if (filters.page_size) params.append('q', `(page_size:${filters.page_size})`)
+      if (filters.datasource_id) {
+        params.append('q', `(filters:!((col:datasource_id,opr:eq,value:${filters.datasource_id})))`)
+      }
+      
+      const response = await this.api.get(`/api/v1/chart/?${params.toString()}`)
+      console.log('차트 목록 응답:', response.data)
+      return response.data.result || []
+    } catch (error) {
+      console.error('차트 목록 조회 오류:', error)
+      throw error
+    }
+  }
+
+  // 차트 생성
+  async createChart(payload) {
+    try {
+      console.log('차트 생성 요청:', payload)
+      
+      // 차트 생성에 필요한 최소한의 payload 구성
+      const chartPayload = {
+        slice_name: payload.slice_name || '새 차트',
+        description: payload.description || '',
+        viz_type: payload.viz_type || 'table',
+        datasource_id: payload.datasource_id,
+        datasource_type: 'table',
+        params: JSON.stringify(payload.params || {}),
+        query_context: JSON.stringify(payload.query_context || {}),
+        cache_timeout: payload.cache_timeout || null
+      }
+      
+      console.log('차트 생성 페이로드:', chartPayload)
+      
+      const response = await this.api.post('/api/v1/chart/', chartPayload)
+      console.log('차트 생성 응답:', response.data)
+      return response.data
+    } catch (error) {
+      console.error('차트 생성 오류:', error)
+      if (error.response) {
+        console.error('응답 상태:', error.response.status)
+        console.error('응답 데이터:', error.response.data)
+      }
+      throw error
+    }
+  }
+
+  // 차트 데이터 조회
+  async getChartData(chartId = null, formData = {}) {
+    try {
+      const payload = chartId ? 
+        { chart_id: chartId } : 
+        {
+          datasource: formData.datasource || formData.datasource_id + '__table',
+          viz_type: formData.viz_type || 'table',
+          form_data: formData
+        }
+      
+      console.log('차트 데이터 요청:', payload)
       const response = await this.api.post('/api/v1/chart/data', payload)
       console.log('차트 데이터 응답:', response.data)
       return response.data
     } catch (error) {
       console.error('차트 데이터 조회 오류:', error)
+      throw error
+    }
+  }
+
+  // 차트 타입 목록 조회
+  async getVizTypes() {
+    try {
+      console.log('차트 타입 목록 조회')
+      const response = await this.api.get('/api/v1/chart/viz_types')
+      console.log('차트 타입 목록:', response.data)
+      return response.data
+    } catch (error) {
+      console.error('차트 타입 조회 오류:', error)
       throw error
     }
   }

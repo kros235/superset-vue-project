@@ -51,7 +51,20 @@ const routes = [
           requiresAuth: true,
           permission: 'canManageUsers'
         }
+      },
+      {
+        path: '/charts',
+        name: 'ChartBuilder',
+        component: () => import('../views/ChartBuilder.vue'),
+        meta: {
+          requiresAuth: true,
+          title: '차트 빌더',
+          permissions: ['canCreateChart']
+        }
       }
+
+      // ChartBuilder.vue가 없는 경우 기본 구조 생성 필요
+      // 이미 존재한다면 query 파라미터 처리 로직 확인
     ]
   },
   {

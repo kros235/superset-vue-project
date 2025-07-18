@@ -323,13 +323,16 @@ class SupersetAPI {
   }
 
   // 7. 사용자 관리
+  // 사용자 목록 조회
   async getUsers() {
     try {
-      const response = await this.api.get('/api/v1/security/users/');
-      return response.data.result;
+      console.log('사용자 목록 조회')
+      const response = await this.api.get('/api/v1/security/users/')
+      console.log('사용자 목록 응답:', response.data)
+      return response.data.result || []
     } catch (error) {
-      console.error('Get users error:', error);
-      throw error;
+      console.error('사용자 목록 조회 오류:', error)
+      throw error
     }
   }
 
@@ -343,24 +346,29 @@ class SupersetAPI {
     }
   }
 
+  // 역할 목록 조회
   async getRoles() {
     try {
-      const response = await this.api.get('/api/v1/security/roles/');
-      return response.data.result;
+      console.log('역할 목록 조회')
+      const response = await this.api.get('/api/v1/security/roles/')
+      console.log('역할 목록 응답:', response.data)
+      return response.data.result || []
     } catch (error) {
-      console.error('Get roles error:', error);
-      throw error;
+      console.error('역할 목록 조회 오류:', error)
+      throw error
     }
   }
 
   // 8. 권한 관리
   async getPermissions() {
     try {
-      const response = await this.api.get('/api/v1/security/permissions/');
-      return response.data.result;
+      console.log('권한 목록 조회')
+      const response = await this.api.get('/api/v1/security/permissions/')
+      console.log('권한 목록 응답:', response.data)
+      return response.data.result || []
     } catch (error) {
-      console.error('Get permissions error:', error);
-      throw error;
+      console.error('권한 목록 조회 오류:', error)
+      throw error
     }
   }
 
