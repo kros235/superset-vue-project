@@ -44,14 +44,23 @@
           <h4 style="margin: 0">선택된 차트 타입: {{ getSelectedChartName() }}</h4>
           <p style="color: #666; margin: 4px 0 0 0">{{ getSelectedChartDescription() }}</p>
         </div>
-        <a-button
-          type="primary"
-          @click="goToNext"
-          style="margin-left: 16px"
-        >
-          다음 단계
-          <RightOutlined />
-        </a-button>
+        
+        <!-- 🔥 네비게이션 버튼 제거 - 하단 공통 버튼 사용 -->
+        <!-- 
+        <a-space>
+          <a-button @click="goToPrevious">
+            이전
+          </a-button>
+          <a-button
+            type="primary"
+            @click="goToNext"
+            style="margin-left: 16px"
+          >
+            다음 단계
+            <RightOutlined />
+          </a-button>
+        </a-space>
+        -->
       </div>
     </div>
   </a-card>
@@ -88,71 +97,75 @@ export default defineComponent({
       default: ''
     }
   },
-  emits: ['select', 'next'],
+  emits: ['select', 'next', 'back'],
   setup(props, { emit }) {
     const chartTypes = ref([
       {
         key: 'table',
         name: '테이블',
-        description: '데이터를 표 형태로 표시합니다',
-        icon: TableOutlined
+        description: '데이터를 표 형태로 표시',
+        icon: 'TableOutlined'
       },
       {
         key: 'dist_bar',
         name: '막대 차트',
-        description: '카테고리별 값을 막대로 비교합니다',
-        icon: BarChartOutlined
+        description: '카테고리별 값을 막대로 비교',
+        icon: 'BarChartOutlined'
       },
       {
         key: 'line',
         name: '선 차트',
-        description: '시간에 따른 변화를 선으로 표시합니다',
-        icon: LineChartOutlined
+        description: '시간에 따른 트렌드 표시',
+        icon: 'LineChartOutlined'
       },
       {
         key: 'pie',
         name: '파이 차트',
-        description: '전체에서 각 부분의 비율을 표시합니다',
-        icon: PieChartOutlined
+        description: '전체에서 각 부분의 비율 표시',
+        icon: 'PieChartOutlined'
       },
       {
         key: 'area',
         name: '영역 차트',
-        description: '시간에 따른 누적 변화를 표시합니다',
-        icon: AreaChartOutlined
+        description: '시간별 누적 데이터 표시',
+        icon: 'AreaChartOutlined'
       },
       {
         key: 'scatter',
         name: '산점도',
-        description: '두 변수 간의 상관관계를 표시합니다',
-        icon: DotChartOutlined
+        description: '두 변수간의 상관관계 표시',
+        icon: 'DotChartOutlined'
       }
     ])
 
-    const selectChartType = (type) => {
-      console.log('차트 타입 선택:', type)
-      emit('select', type)
-    }
-
-    const goToNext = () => {
-      console.log('다음 단계로 이동')
-      emit('next')
+    const selectChartType = (chartType) => {
+      emit('select', chartType)
     }
 
     const getSelectedChartName = () => {
-      const selected = chartTypes.value.find(type => type.key === props.selectedType)
-      return selected ? selected.name : ''
+      const chart = chartTypes.value.find(type => type.key === props.selectedType)
+      return chart ? chart.name : ''
     }
 
     const getSelectedChartDescription = () => {
-      const selected = chartTypes.value.find(type => type.key === props.selectedType)
-      return selected ? selected.description : ''
+      const chart = chartTypes.value.find(type => type.key === props.selectedType)
+      return chart ? chart.description : ''
     }
+
+    // 🔥 제거된 네비게이션 함수들 (상위 컴포넌트에서 처리)
+    /*
+    const goToNext = () => {
+      emit('next')
+    }
+
+    const goToPrevious = () => {
+      emit('back')
+    }
+    */
 
     return {
       chartTypes,
       selectChartType,
-      goToNext,
       getSelectedChartName,
       getSelectedChartDescription
     }
@@ -162,16 +175,16 @@ export default defineComponent({
 
 <style scoped>
 .selected-chart-type {
-  border-color: #1890ff !important;
-  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+  border: 2px solid #1890ff !important;
+  box-shadow: 0 0 10px rgba(24, 144, 255, 0.3);
 }
 
 .ant-card:hover {
-  border-color: #1890ff;
-  box-shadow: 0 1px 2px -2px rgba(0, 0, 0, 0.16), 0 3px 6px 0 rgba(0, 0, 0, 0.12), 0 5px 12px 4px rgba(0, 0, 0, 0.09);
+  transform: translateY(-2px);
+  transition: all 0.3s ease;
 }
 
-.ant-card-body {
-  padding: 20px;
+.ant-tag {
+  margin-right: 8px;
 }
 </style>

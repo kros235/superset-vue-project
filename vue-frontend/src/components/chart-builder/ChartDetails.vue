@@ -1,79 +1,55 @@
 <template>
   <a-card title="4단계: 차트 정보" style="margin-bottom: 24px">
-    <p style="color: #666; margin-bottom: 24px">
-      차트의 이름과 설명을 입력하세요.
-    </p>
+    <a-form layout="vertical">
+      <!-- 기본 정보 입력 -->
+      <a-row :gutter="16">
+        <a-col :span="24">
+          <a-form-item label="차트 이름 *" required>
+            <a-input
+              v-model:value="details.slice_name"
+              placeholder="차트의 이름을 입력하세요"
+              size="large"
+              :maxlength="100"
+              show-count
+            />
+          </a-form-item>
+        </a-col>
+      </a-row>
 
-    <a-form layout="vertical" :model="details">
-      <a-card title="차트 정보">
-        <a-form-item
-          label="차트 이름"
-          name="slice_name"
-          :rules="[{ required: true, message: '차트 이름을 입력해주세요!' }]"
-        >
-          <a-input
-            v-model:value="details.slice_name"
-            placeholder="차트의 이름을 입력하세요"
-            size="large"
-          />
-        </a-form-item>
+      <a-row :gutter="16">
+        <a-col :span="24">
+          <a-form-item label="차트 설명">
+            <a-textarea
+              v-model:value="details.description"
+              placeholder="차트에 대한 설명을 입력하세요 (선택사항)"
+              :rows="4"
+              :maxlength="500"
+              show-count
+            />
+          </a-form-item>
+        </a-col>
+      </a-row>
 
-        <a-form-item
-          label="차트 설명"
-          name="description"
-        >
-          <a-textarea
-            v-model:value="details.description"
-            placeholder="차트에 대한 설명을 입력하세요 (선택사항)"
-            :rows="3"
-          />
-        </a-form-item>
-
-        <a-form-item label="소유자">
-          <a-input
-            :value="currentUser?.first_name || currentUser?.username"
-            disabled
-          />
-        </a-form-item>
-      </a-card>
-
-      <a-card title="차트 요약" style="margin-top: 16px">
-        <a-descriptions :column="1" bordered>
+      <!-- 차트 정보 요약 -->
+      <a-card title="차트 설정 요약" style="margin-bottom: 16px">
+        <a-descriptions :column="2" size="small">
           <a-descriptions-item label="데이터셋">
-            {{ selectedDataset?.table_name || '선택되지 않음' }}
+            {{ selectedDataset?.table_name || '선택 안됨' }}
           </a-descriptions-item>
           <a-descriptions-item label="차트 타입">
             {{ getChartTypeName() }}
           </a-descriptions-item>
-          <a-descriptions-item label="메트릭">
-            <a-tag
-              v-for="metric in chartConfig.params?.metrics || []"
-              :key="metric"
-              color="blue"
-            >
-              {{ metric }}
-            </a-tag>
-            <span v-if="!chartConfig.params?.metrics?.length" style="color: #999">
-              설정되지 않음
-            </span>
+          <a-descriptions-item label="작성자">
+            {{ currentUser?.first_name }} {{ currentUser?.last_name }}
           </a-descriptions-item>
-          <a-descriptions-item label="그룹 기준">
-            <a-tag
-              v-for="group in chartConfig.params?.groupby || []"
-              :key="group"
-              color="green"
-            >
-              {{ group }}
-            </a-tag>
-            <span v-if="!chartConfig.params?.groupby?.length" style="color: #999">
-              설정되지 않음
-            </span>
+          <a-descriptions-item label="생성일">
+            {{ new Date().toLocaleDateString('ko-KR') }}
           </a-descriptions-item>
         </a-descriptions>
       </a-card>
 
-      <!-- 입력 검증 -->
-      <a-card title="준비 상태" style="margin-top: 16px">
+      <!-- 검증 상태 표시 -->
+      <a-card title="입력 검증" style="margin-bottom: 16px">
         <a-space direction="vertical" style="width: 100%">
           <div>
             <a-tag :color="details.slice_name ? 'green' : 'red'">
@@ -87,23 +63,22 @@
             </a-tag>
             메트릭 {{ chartConfig.params?.metrics?.length ? '설정완료' : '설정 필요' }}
           </div>
+          <div>
+            <a-tag :color="selectedDataset ? 'green' : 'red'">
+              {{ selectedDataset ? '✓' : '✗' }}
+            </a-tag>
+            데이터셋 {{ selectedDataset ? '선택완료' : '선택 필요' }}
+          </div>
+          <div>
+            <a-tag :color="chartConfig.viz_type ? 'green' : 'red'">
+              {{ chartConfig.viz_type ? '✓' : '✗' }}
+            </a-tag>
+            차트 타입 {{ chartConfig.viz_type ? '선택완료' : '선택 필요' }}
+          </div>
         </a-space>
       </a-card>
 
-      <div style="margin-top: 24px; text-align: center">
-        <a-space>
-          <a-button @click="goToPrevious">
-            이전
-          </a-button>
-          <a-button 
-            type="primary" 
-            @click="handleNext"
-            :disabled="!isValid"
-          >
-            미리보기
-          </a-button>
-        </a-space>
-      </div>
+      <!-- 🔥 개별 버튼 제거 - 상위 컴포넌트의 공통 버튼 사용 -->
     </a-form>
   </a-card>
 </template>
@@ -151,23 +126,10 @@ export default defineComponent({
     const isValid = computed(() => {
       return details.value.slice_name && 
              details.value.slice_name.trim() && 
-             props.chartConfig.params?.metrics?.length > 0
+             props.chartConfig.params?.metrics?.length > 0 &&
+             props.selectedDataset &&
+             props.chartConfig.viz_type
     })
-
-    // 다음 단계로 이동
-    const handleNext = () => {
-      if (!isValid.value) {
-        return
-      }
-      
-      emit('update', details.value)
-      emit('next')
-    }
-
-    // 이전 단계로 이동
-    const goToPrevious = () => {
-      emit('back')
-    }
 
     // 기존 설정 값으로 폼 초기화
     watch(() => props.chartConfig, (newConfig) => {
@@ -188,9 +150,7 @@ export default defineComponent({
       details,
       currentUser,
       getChartTypeName,
-      isValid,
-      handleNext,
-      goToPrevious
+      isValid
     }
   }
 })
@@ -207,5 +167,24 @@ export default defineComponent({
 
 .ant-tag {
   margin-right: 8px;
+}
+
+.ant-input,
+.ant-textarea {
+  border-radius: 6px;
+}
+
+.ant-form-item-label > label {
+  font-weight: 500;
+}
+
+/* 필수 입력 필드 스타일 */
+.ant-form-item-required::before {
+  color: #ff4d4f;
+}
+
+/* 검증 상태 카드 스타일 */
+.ant-space > .ant-space-item {
+  padding: 8px 0;
 }
 </style>

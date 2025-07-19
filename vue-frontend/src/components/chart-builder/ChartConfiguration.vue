@@ -1,48 +1,45 @@
 <template>
   <a-card title="3단계: 차트 설정" style="margin-bottom: 24px">
-    <p style="color: #666; margin-bottom: 24px">
-      선택한 차트 타입에 맞는 설정을 구성하세요.
-    </p>
-
     <a-form layout="vertical">
-      <!-- 기본 설정 -->
-      <a-card title="기본 설정" style="margin-bottom: 16px">
+      <!-- 기본 메트릭 설정 -->
+      <a-card title="데이터 설정" style="margin-bottom: 16px">
         <a-row :gutter="16">
           <a-col :span="12">
-            <a-form-item label="메트릭 (Metrics)" required>
+            <a-form-item label="메트릭 *" required>
               <a-select
                 v-model:value="config.metrics"
                 mode="multiple"
                 placeholder="측정할 메트릭을 선택하세요"
-                :options="metricOptions"
                 :loading="metricsLoading"
-                show-search
+                :options="metricOptions"
                 :filter-option="filterOption"
+                show-search
+                style="width: 100%"
               >
-                <template #notFoundContent>
-                  <a-empty description="사용 가능한 메트릭이 없습니다" />
+                <template #optionRender="{ option }">
+                  <div>
+                    <strong>{{ option.label }}</strong>
+                    <div style="font-size: 12px; color: #666">{{ option.group }}</div>
+                  </div>
                 </template>
               </a-select>
-              <div style="margin-top: 8px; color: #666; font-size: 12px">
-                메트릭이 없으면 기본 집계 함수를 사용합니다
-              </div>
             </a-form-item>
           </a-col>
           <a-col :span="12">
-            <a-form-item label="그룹 기준 (Group By)">
+            <a-form-item label="그룹 기준">
               <a-select
                 v-model:value="config.groupby"
                 mode="multiple"
-                placeholder="그룹핑할 컬럼을 선택하세요"
+                placeholder="그룹화할 컬럼을 선택하세요"
                 :options="categoricalColumnOptions"
-                show-search
                 :filter-option="filterOption"
+                show-search
+                style="width: 100%"
               />
             </a-form-item>
           </a-col>
         </a-row>
 
-        <!-- 시계열 차트 전용 설정 -->
         <a-row :gutter="16" v-if="isTimeSeriesChart">
           <a-col :span="12">
             <a-form-item label="시간 컬럼">
@@ -50,8 +47,7 @@
                 v-model:value="config.granularity_sqla"
                 placeholder="시간 기준 컬럼을 선택하세요"
                 :options="dateColumnOptions"
-                show-search
-                :filter-option="filterOption"
+                style="width: 100%"
               />
             </a-form-item>
           </a-col>
@@ -59,32 +55,42 @@
             <a-form-item label="시간 범위">
               <a-select
                 v-model:value="config.time_range"
-                placeholder="분석할 시간 범위를 선택하세요"
+                placeholder="시간 범위를 선택하세요"
                 :options="timeRangeOptions"
-              />
-            </a-form-item>
-          </a-col>
-        </a-row>
-
-        <!-- 행 제한 설정 -->
-        <a-row :gutter="16">
-          <a-col :span="12">
-            <a-form-item label="행 제한">
-              <a-input-number
-                v-model:value="config.row_limit"
-                :min="1"
-                :max="50000"
-                :step="100"
-                placeholder="조회할 최대 행 수"
                 style="width: 100%"
               />
             </a-form-item>
           </a-col>
-          <a-col :span="12">
-            <a-form-item label="정렬">
+        </a-row>
+      </a-card>
+
+      <!-- 테이블 차트 설정 -->
+      <a-card v-if="chartConfig.viz_type === 'table'" title="테이블 설정" style="margin-bottom: 16px">
+        <a-row :gutter="16">
+          <a-col :span="8">
+            <a-form-item label="페이지 크기">
+              <a-input-number
+                v-model:value="config.page_length"
+                :min="10"
+                :max="1000"
+                :step="10"
+                placeholder="페이지당 행 수"
+                style="width: 100%"
+              />
+            </a-form-item>
+          </a-col>
+          <a-col :span="8">
+            <a-form-item>
+              <a-checkbox v-model:checked="config.include_search">
+                검색 기능 포함
+              </a-checkbox>
+            </a-form-item>
+          </a-col>
+          <a-col :span="8">
+            <a-form-item label="정렬 순서">
               <a-select
                 v-model:value="config.order_desc"
-                placeholder="정렬 방향을 선택하세요"
+                style="width: 100%"
               >
                 <a-select-option value="desc">내림차순</a-select-option>
                 <a-select-option value="asc">오름차순</a-select-option>
@@ -94,26 +100,19 @@
         </a-row>
       </a-card>
 
-      <!-- 차트별 세부 설정 -->
-      <a-card v-if="chartConfig.viz_type === 'table'" title="테이블 설정" style="margin-bottom: 16px">
+      <!-- 일반 데이터 제한 설정 -->
+      <a-card title="데이터 제한" style="margin-bottom: 16px">
         <a-row :gutter="16">
           <a-col :span="12">
-            <a-form-item label="페이지 크기">
+            <a-form-item label="행 제한">
               <a-input-number
-                v-model:value="config.page_length"
-                :min="10"
-                :max="1000"
-                :step="10"
-                placeholder="테이블에 표시할 행 수"
+                v-model:value="config.row_limit"
+                :min="1"
+                :max="50000"
+                :step="100"
+                placeholder="최대 행 수"
                 style="width: 100%"
               />
-            </a-form-item>
-          </a-col>
-          <a-col :span="12">
-            <a-form-item>
-              <a-checkbox v-model:checked="config.include_search">
-                검색 기능 포함
-              </a-checkbox>
             </a-form-item>
           </a-col>
         </a-row>
@@ -126,12 +125,13 @@
             <a-form-item label="라벨 타입">
               <a-select
                 v-model:value="config.pie_label_type"
-                placeholder="라벨 표시 방식을 선택하세요"
+                style="width: 100%"
               >
-                <a-select-option :value="'key'">키만</a-select-option>
-                <a-select-option :value="'value'">값만</a-select-option>
-                <a-select-option :value="'percent'">퍼센트만</a-select-option>
-                <a-select-option :value="'key_value'">키와 값</a-select-option>
+                <a-select-option value="key">키만</a-select-option>
+                <a-select-option value="value">값만</a-select-option>
+                <a-select-option value="key_value">키와 값</a-select-option>
+                <a-select-option value="percent">백분율</a-select-option>
+                <a-select-option value="key_percent">키와 백분율</a-select-option>
               </a-select>
             </a-form-item>
           </a-col>
@@ -216,17 +216,7 @@
         </a-descriptions>
       </a-card>
 
-      <!-- 버튼 -->
-      <div style="text-align: center">
-        <a-space>
-          <a-button @click="goToPrevious">
-            이전
-          </a-button>
-          <a-button type="primary" @click="handleNext" :disabled="!isConfigValid">
-            다음 단계
-          </a-button>
-        </a-space>
-      </div>
+      <!-- 🔥 개별 버튼 제거 - 상위 컴포넌트의 공통 버튼 사용 -->
     </a-form>
   </a-card>
 </template>
@@ -305,34 +295,32 @@ export default defineComponent({
         })
       }
 
-      // 3. 숫자형 컬럼에 대한 집계 함수
+      // 3. 숫자형 컬럼에 대한 집계 함수들
       const numericColumns = props.datasetColumns.filter(col => 
-        ['INTEGER', 'FLOAT', 'NUMERIC', 'DECIMAL', 'DOUBLE', 'REAL', 'BIGINT'].includes(col.type?.toUpperCase())
+        ['INTEGER', 'FLOAT', 'NUMERIC', 'DECIMAL', 'BIGINT', 'DOUBLE', 'REAL'].includes(col.type?.toUpperCase())
       )
 
       numericColumns.forEach(col => {
-        options.push(
-          {
-            label: `SUM(${col.column_name})`,
-            value: `sum__${col.column_name}`,
-            group: '집계 함수'
-          },
-          {
-            label: `AVG(${col.column_name})`,
-            value: `avg__${col.column_name}`,
-            group: '집계 함수'
-          },
-          {
-            label: `MAX(${col.column_name})`,
-            value: `max__${col.column_name}`,
-            group: '집계 함수'
-          },
-          {
-            label: `MIN(${col.column_name})`,
-            value: `min__${col.column_name}`,
-            group: '집계 함수'
-          }
-        )
+        options.push({
+          label: `SUM(${col.column_name})`,
+          value: `sum__${col.column_name}`,
+          group: '합계 함수'
+        })
+        options.push({
+          label: `AVG(${col.column_name})`,
+          value: `avg__${col.column_name}`,
+          group: '평균 함수'
+        })
+        options.push({
+          label: `MAX(${col.column_name})`,
+          value: `max__${col.column_name}`,
+          group: '최대값 함수'
+        })
+        options.push({
+          label: `MIN(${col.column_name})`,
+          value: `min__${col.column_name}`,
+          group: '최소값 함수'
+        })
       })
 
       // 4. 모든 컬럼에 대한 COUNT
@@ -420,22 +408,6 @@ export default defineComponent({
       }
     }
 
-    // 다음 단계로 이동
-    const handleNext = () => {
-      if (!isConfigValid.value) {
-        message.warning('메트릭을 최소 1개 이상 선택해주세요.')
-        return
-      }
-      
-      emit('update', config.value)
-      emit('next')
-    }
-
-    // 이전 단계로 이동
-    const goToPrevious = () => {
-      emit('back')
-    }
-
     // 기본값 설정
     const setDefaultValues = () => {
       // 기본 메트릭으로 COUNT(*) 설정
@@ -444,9 +416,9 @@ export default defineComponent({
       }
     }
 
-    // config 변경 감지
+    // config 변경 감지하여 상위 컴포넌트에 전달
     watch(config, (newConfig) => {
-      emit('update', newConfig)
+      emit('update', { params: newConfig })
     }, { deep: true })
 
     // 컴포넌트 마운트 시
@@ -473,9 +445,7 @@ export default defineComponent({
       timeRangeOptions,
       colorSchemeOptions,
       filterOption,
-      getColorSchemeName,
-      handleNext,
-      goToPrevious
+      getColorSchemeName
     }
   }
 })
@@ -492,5 +462,19 @@ export default defineComponent({
 
 .ant-card {
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  margin-bottom: 16px;
+}
+
+.ant-card-head-title {
+  font-weight: 600;
+}
+
+.ant-form-item-label > label {
+  font-weight: 500;
+}
+
+/* 필수 입력 필드 스타일 */
+.ant-form-item-required::before {
+  color: #ff4d4f;
 }
 </style>
