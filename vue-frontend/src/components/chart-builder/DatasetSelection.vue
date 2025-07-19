@@ -4,6 +4,13 @@
       차트를 생성할 데이터셋을 선택해주세요.
     </p>
 
+    <!-- 🔥 디버깅 정보 추가 (개발 시에만) -->
+    <div v-if="false" style="background: #f0f0f0; padding: 8px; margin-bottom: 16px; font-size: 12px;">
+      <div>데이터셋 개수: {{ datasets.length }}</div>
+      <div>선택된 데이터셋: {{ selectedDataset?.id || 'null' }}</div>
+      <div>로딩 상태: {{ loading }}</div>
+    </div>
+
     <a-spin :spinning="loading" tip="데이터셋 목록을 불러오는 중...">
       <a-row :gutter="[16, 16]" v-if="datasets.length > 0">
         <a-col
@@ -23,12 +30,23 @@
               <div style="display: flex; align-items: center">
                 <DatabaseOutlined style="margin-right: 8px; color: #1890ff" />
                 {{ dataset.table_name }}
+                
+                <!-- 🔥 선택 상태 아이콘 추가 -->
+                <CheckCircleOutlined 
+                  v-if="selectedDataset?.id === dataset.id"
+                  style="margin-left: auto; color: #52c41a; font-size: 18px"
+                />
               </div>
             </template>
 
             <div style="margin-bottom: 12px">
               <a-tag color="blue">
                 {{ dataset.database?.database_name || 'Unknown DB' }}
+              </a-tag>
+              <!-- 🔥 선택됨 태그 추가 -->
+              <a-tag v-if="selectedDataset?.id === dataset.id" color="green">
+                <CheckOutlined />
+                선택됨
               </a-tag>
             </div>
 
@@ -44,18 +62,11 @@
                 {{ formatDate(dataset.created_on) }}
               </span>
             </div>
-
-            <div v-if="selectedDataset?.id === dataset.id" style="margin-top: 12px">
-              <a-tag color="green">
-                <CheckOutlined />
-                선택됨
-              </a-tag>
-            </div>
           </a-card>
         </a-col>
       </a-row>
 
-      <a-empty v-if="!datasets.length && !loading" description="사용 가능한 데이터셋이 없습니다">
+      <a-empty v-else-if="!loading" description="사용 가능한 데이터셋이 없습니다">
         <template #description>
           <span>사용 가능한 데이터셋이 없습니다.</span>
           <br />
@@ -64,10 +75,10 @@
       </a-empty>
     </a-spin>
 
-    <!-- 🔥 선택된 데이터셋 정보 표시 (버튼 제거) -->
+    <!-- 🔥 선택된 데이터셋 정보 표시 -->
     <div v-if="selectedDataset" style="margin-top: 24px">
       <a-divider />
-      <div style="background: #f9f9f9; padding: 16px; border-radius: 8px">
+      <div class="selected-info">
         <h4 style="margin: 0 0 8px 0; color: #1890ff">
           <DatabaseOutlined style="margin-right: 8px" />
           선택된 데이터셋: {{ selectedDataset.table_name }}
@@ -85,30 +96,24 @@
           </a-tag>
         </div>
       </div>
-      
-      <!-- 🔥 중복된 개별 "다음 단계" 버튼 제거 -->
-      <!-- 
-      <a-button
-        type="primary"
-        @click="$emit('next')"
-        style="margin-top: 16px"
-      >
-        다음 단계
-      </a-button>
-      -->
     </div>
   </a-card>
 </template>
 
 <script>
 import { defineComponent } from 'vue'
-import { DatabaseOutlined, CheckOutlined } from '@ant-design/icons-vue'
+import { 
+  DatabaseOutlined, 
+  CheckOutlined, 
+  CheckCircleOutlined 
+} from '@ant-design/icons-vue'
 
 export default defineComponent({
   name: 'DatasetSelection',
   components: {
     DatabaseOutlined,
-    CheckOutlined
+    CheckOutlined,
+    CheckCircleOutlined
   },
   props: {
     datasets: {
@@ -124,11 +129,11 @@ export default defineComponent({
       default: false
     }
   },
-  emits: ['change'], // 🔥 'next' 이벤트 제거, 'change'만 유지
+  emits: ['change'],
   setup (props, { emit }) {
     const selectDataset = (dataset) => {
       console.log('데이터셋 선택됨:', dataset)
-      emit('change', dataset.id) // 🔥 'select' 대신 'change' 이벤트 사용
+      emit('change', dataset.id)
     }
 
     const formatDate = (dateString) => {

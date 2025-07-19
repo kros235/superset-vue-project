@@ -357,35 +357,124 @@ class SupersetAPI {
   // 차트 미리보기
   async previewChart(chartConfig) {
     try {
-      console.log('차트 미리보기 생성 중:', chartConfig)
+      console.log('=== 차트 미리보기 시작 ===')
+      console.log('받은 chartConfig:', chartConfig)
       
-      // Superset 차트 데이터 API 호출
-      const response = await this.api.post('/api/v1/chart/data', {
+      // 🔥 필수 값 검증
+      if (!chartConfig.datasource_id) {
+        throw new Error('데이터셋 ID가 누락되었습니다.')
+      }
+
+      if (!chartConfig.params?.metrics || chartConfig.params.metrics.length === 0) {
+        throw new Error('메트릭이 설정되지 않았습니다.')
+      }
+
+      // 🔥 Superset API 형식에 맞게 요청 페이로드 구성
+      const requestPayload = {
         datasource: {
           id: chartConfig.datasource_id,
           type: 'table'
         },
+        // 🔥 쿼리 객체를 올바른 형식으로 구성
         queries: [{
-          columns: chartConfig.params?.groupby || [],
-          metrics: chartConfig.params?.metrics || ['count'],
-          orderby: [],
-          row_limit: chartConfig.params?.row_limit || 1000,
-          time_range: chartConfig.params?.time_range || 'No filter',
-          granularity: chartConfig.params?.granularity_sqla || null,
+          // 기본 필드들
+          columns: chartConfig.params.groupby || [],
+          metrics: this.formatMetrics(chartConfig.params.metrics),
+          orderby: chartConfig.params.orderby || [],
+          row_limit: chartConfig.params.row_limit || 1000,
+          
+          // 시간 관련 필드들
+          time_range: chartConfig.params.time_range || 'No filter',
+          granularity_sqla: chartConfig.params.granularity_sqla || null,
+          
+          // 추가 옵션들
           extras: {
-            having: '',
-            where: ''
-          }
-        }]
-      })
+            having: chartConfig.params.having || '',
+            where: chartConfig.params.where || ''
+          },
+          
+          // 🔥 테이블 차트용 특별 처리
+          ...(chartConfig.viz_type === 'table' && {
+            query_mode: 'aggregate',
+            include_search: chartConfig.params.include_search || false,
+            page_length: chartConfig.params.page_length || 100
+          })
+        }],
+        
+        // 🔥 형식 데이터 추가
+        form_data: {
+          datasource: `${chartConfig.datasource_id}__table`,
+          viz_type: chartConfig.viz_type,
+          slice_id: null,
+          slice_name: chartConfig.slice_name || '미리보기',
+          ...chartConfig.params
+        },
+        
+        // 🔥 결과 형식 지정
+        result_format: 'json',
+        result_type: 'full'
+      }
+
+      console.log('=== API 요청 페이로드 ===')
+      console.log(JSON.stringify(requestPayload, null, 2))
       
-      console.log('차트 미리보기 데이터:', response.data)
+      const response = await this.api.post('/api/v1/chart/data', requestPayload)
+      
+      console.log('=== API 응답 성공 ===')
+      console.log('응답 데이터:', response.data)
       return response.data
     } catch (error) {
-      console.error('차트 미리보기 오류:', error)
+      console.error('=== API 요청 실패 ===')
+      console.error('에러 상세:', error)
+      if (error.response) {
+        console.error('응답 상태:', error.response.status)
+        console.error('응답 데이터:', error.response.data)
+        console.error('응답 헤더:', error.response.headers)
+      }
       throw error
     }
   }
+
+  // 🔥 메트릭 형식 변환 헬퍼 함수 추가
+  formatMetrics(metrics) {
+    if (!metrics || !Array.isArray(metrics)) {
+      return ['count']
+    }
+    
+    return metrics.map(metric => {
+      if (typeof metric === 'string') {
+        // 문자열 메트릭 처리
+        if (metric.includes('__')) {
+          // sum__column_name 형식
+          const [aggregateType, columnName] = metric.split('__')
+          return {
+            aggregate: aggregateType.toUpperCase(),
+            column: {
+              column_name: columnName,
+              type: 'NUMERIC'
+            },
+            expressionType: 'SIMPLE',
+            label: `${aggregateType.toUpperCase()}(${columnName})`
+          }
+        } else if (metric === 'count') {
+          // 기본 count 메트릭
+          return {
+            aggregate: 'COUNT',
+            column: null,
+            expressionType: 'SIMPLE',
+            label: 'COUNT(*)'
+          }
+        } else {
+          // 기타 문자열 메트릭
+          return metric
+        }
+      } else {
+        // 이미 객체 형식이면 그대로 반환
+        return metric
+      }
+    })
+  }
+
 
   // ===== 대시보드 관련 메서드 =====
   
