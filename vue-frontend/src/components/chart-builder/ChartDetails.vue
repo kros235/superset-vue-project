@@ -1,11 +1,10 @@
 <template>
-  <div>
-    <h3>차트 정보</h3>
+  <a-card title="4단계: 차트 정보" style="margin-bottom: 24px">
     <p style="color: #666; margin-bottom: 24px">
       차트의 이름과 설명을 입력하세요.
     </p>
 
-    <a-form layout="vertical" :model="details" @finish="handleSubmit">
+    <a-form layout="vertical" :model="details">
       <a-card title="차트 정보">
         <a-form-item
           label="차트 이름"
@@ -73,23 +72,45 @@
         </a-descriptions>
       </a-card>
 
+      <!-- 입력 검증 -->
+      <a-card title="준비 상태" style="margin-top: 16px">
+        <a-space direction="vertical" style="width: 100%">
+          <div>
+            <a-tag :color="details.slice_name ? 'green' : 'red'">
+              {{ details.slice_name ? '✓' : '✗' }}
+            </a-tag>
+            차트 이름 {{ details.slice_name ? '입력완료' : '입력 필요' }}
+          </div>
+          <div>
+            <a-tag :color="chartConfig.params?.metrics?.length ? 'green' : 'red'">
+              {{ chartConfig.params?.metrics?.length ? '✓' : '✗' }}
+            </a-tag>
+            메트릭 {{ chartConfig.params?.metrics?.length ? '설정완료' : '설정 필요' }}
+          </div>
+        </a-space>
+      </a-card>
+
       <div style="margin-top: 24px; text-align: center">
         <a-space>
-          <a-button @click="$emit('back')">
+          <a-button @click="goToPrevious">
             이전
           </a-button>
-          <a-button type="primary" @click="handleNext">
+          <a-button 
+            type="primary" 
+            @click="handleNext"
+            :disabled="!isValid"
+          >
             미리보기
           </a-button>
         </a-space>
       </div>
     </a-form>
-  </div>
+  </a-card>
 </template>
 
 <script>
 import { defineComponent, ref, computed, watch } from 'vue'
-import { useStore } from 'vuex'
+import authService from '../../services/authService'
 
 export default defineComponent({
   name: 'ChartDetails',
@@ -103,17 +124,16 @@ export default defineComponent({
       default: null
     }
   },
-  emits: ['change', 'next', 'back'],
-  setup (props, { emit }) {
-    const store = useStore()
-
+  emits: ['update', 'next', 'back'],
+  setup(props, { emit }) {
     const details = ref({
-      slice_name: props.chartConfig.slice_name || '',
-      description: props.chartConfig.description || ''
+      slice_name: '',
+      description: ''
     })
 
-    const currentUser = computed(() => store.getters.currentUser)
+    const currentUser = computed(() => authService.getCurrentUser()?.result)
 
+    // 차트 타입 이름 매핑
     const chartTypeNames = {
       table: '테이블',
       dist_bar: '막대 차트',
@@ -127,34 +147,65 @@ export default defineComponent({
       return chartTypeNames[props.chartConfig.viz_type] || props.chartConfig.viz_type
     }
 
-    watch(details, (newDetails) => {
-      emit('change', newDetails)
-    }, { deep: true })
+    // 입력 검증
+    const isValid = computed(() => {
+      return details.value.slice_name && 
+             details.value.slice_name.trim() && 
+             props.chartConfig.params?.metrics?.length > 0
+    })
 
+    // 다음 단계로 이동
     const handleNext = () => {
-      if (!details.value.slice_name.trim()) {
+      if (!isValid.value) {
         return
       }
-      emit('change', details.value)
+      
+      emit('update', details.value)
       emit('next')
     }
+
+    // 이전 단계로 이동
+    const goToPrevious = () => {
+      emit('back')
+    }
+
+    // 기존 설정 값으로 폼 초기화
+    watch(() => props.chartConfig, (newConfig) => {
+      if (newConfig.slice_name) {
+        details.value.slice_name = newConfig.slice_name
+      }
+      if (newConfig.description) {
+        details.value.description = newConfig.description
+      }
+    }, { immediate: true })
+
+    // 실시간으로 부모 컴포넌트에 변경사항 전달
+    watch(details, (newDetails) => {
+      emit('update', newDetails)
+    }, { deep: true })
 
     return {
       details,
       currentUser,
       getChartTypeName,
-      handleNext
+      isValid,
+      handleNext,
+      goToPrevious
     }
   }
 })
 </script>
 
 <style scoped>
-.ant-card {
-  margin-bottom: 16px;
+.ant-descriptions-item-label {
+  font-weight: 500;
 }
 
-.ant-descriptions {
-  background: #fafafa;
+.ant-card {
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.ant-tag {
+  margin-right: 8px;
 }
 </style>

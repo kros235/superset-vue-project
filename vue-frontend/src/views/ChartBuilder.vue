@@ -61,8 +61,9 @@
         <!-- 2단계: 차트 타입 선택 -->
         <ChartTypeSelection
           v-if="selectedDataset && currentStep >= 1"
-          :chartConfig="chartConfig"
-          @change="handleChartTypeChange"
+          :selectedType="chartConfig.viz_type"
+          @select="handleChartTypeChange"
+          @next="goToNextStep"
         />
 
         <!-- 3단계: 차트 설정 -->
@@ -70,7 +71,10 @@
           v-if="selectedDataset && chartConfig.viz_type && datasetColumns.length > 0 && currentStep >= 2"
           :chartConfig="chartConfig"
           :datasetColumns="datasetColumns"
+          :selectedDataset="selectedDataset"
           @update="updateChartParams"
+          @next="goToNextStep"
+          @back="goToPrevStep"
         />
 
         <!-- 4단계: 차트 정보 -->
@@ -96,7 +100,7 @@
 
 <script>
 import { defineComponent, ref, computed, onMounted, h } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { ReloadOutlined } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import authService from '../services/authService'
@@ -106,7 +110,6 @@ import ChartTypeSelection from '../components/chart-builder/ChartTypeSelection.v
 import ChartConfiguration from '../components/chart-builder/ChartConfiguration.vue'
 import ChartDetails from '../components/chart-builder/ChartDetails.vue'
 import ChartPreview from '../components/chart-builder/ChartPreview.vue'
-import { useRoute } from 'vue-router'
 
 export default defineComponent({
   name: 'ChartBuilderView',
@@ -118,15 +121,16 @@ export default defineComponent({
     ChartDetails,
     ChartPreview
   },
-  setup () {
-
+  setup() {
     const router = useRouter()
+    const route = useRoute()
 
     const currentStep = ref(0)
     const loading = ref(false)
     const datasets = ref([])
     const selectedDataset = ref(null)
     const datasetColumns = ref([])
+    const datasetMetrics = ref([])
     const chartData = ref(null)
     const previewLoading = ref(false)
 
@@ -165,38 +169,105 @@ export default defineComponent({
       try {
         const columns = await supersetAPI.getDatasetColumns(datasetId)
         datasetColumns.value = columns
+        console.log('데이터셋 컬럼:', columns)
+        
+        // 메트릭도 함께 로드
+        try {
+          const metrics = await supersetAPI.getDatasetMetrics(datasetId)
+          datasetMetrics.value = metrics || []
+          console.log('데이터셋 메트릭:', metrics)
+        } catch (metricError) {
+          console.warn('메트릭 로드 중 오류 (무시 가능):', metricError)
+          datasetMetrics.value = []
+        }
       } catch (error) {
         console.error('컬럼 로드 오류:', error)
         message.error('데이터셋 컬럼을 불러오는 중 오류가 발생했습니다.')
       }
     }
 
-    const handleDatasetSelect = async (datasetId) => {
-      selectedDataset.value = datasets.value.find(d => d.id === datasetId)
-      chartConfig.value.datasource = datasetId
-      await loadDatasetColumns(datasetId)
-      if (currentStep.value === 0) {
-        currentStep.value = 1
+    // ✅ 누락된 setCurrentStep 함수 추가
+    const setCurrentStep = (step) => {
+      // 현재 단계보다 이전 단계나 같은 단계로만 이동 가능
+      if (step <= currentStep.value || step === 0) {
+        currentStep.value = step
       }
     }
 
-    const handleChartTypeSelect = (vizType) => {
+    // ✅ 누락된 resetForm 함수 추가
+    const resetForm = () => {
+      currentStep.value = 0
+      selectedDataset.value = null
+      datasetColumns.value = []
+      chartData.value = null
+      chartConfig.value = {
+        datasource: '',
+        viz_type: 'table',
+        slice_name: '',
+        description: '',
+        params: {}
+      }
+      message.success('폼이 초기화되었습니다.')
+    }
+
+    const handleDatasetChange = async (datasetId) => {
+      const dataset = datasets.value.find(d => d.id === datasetId)
+      selectedDataset.value = dataset
+      chartConfig.value.datasource_id = datasetId
+      
+      try {
+        await loadDatasetColumns(datasetId)
+        console.log('데이터셋 변경됨:', dataset)
+        // 데이터셋이 선택되면 자동으로 다음 단계로 진행
+        if (currentStep.value === 0) {
+          currentStep.value = 1
+        }
+      } catch (error) {
+        console.error('데이터셋 컬럼 로드 오류:', error)
+        message.error('데이터셋 컬럼 정보를 불러오는 중 오류가 발생했습니다.')
+      }
+    }
+
+    // ✅ goToPrevStep 함수 추가
+    const goToPrevStep = () => {
+      if (currentStep.value > 0) {
+        currentStep.value -= 1
+      }
+    }
+
+    // ✅ goToNextStep 함수 추가
+    const goToNextStep = () => {
+      if (currentStep.value < steps.length - 1) {
+        currentStep.value += 1
+      }
+    }
+
+    // ✅ 누락된 handleChartTypeChange 함수 수정
+    const handleChartTypeChange = (vizType) => {
       chartConfig.value.viz_type = vizType
+      console.log('차트 타입 변경됨:', vizType)
+      // 차트 타입이 선택되면 자동으로 다음 단계로 진행
       if (currentStep.value === 1) {
         currentStep.value = 2
       }
     }
 
-    const handleConfigChange = (config) => {
-      chartConfig.value.params = { ...chartConfig.value.params, ...config }
+    // ✅ 누락된 updateChartParams 함수 추가
+    const updateChartParams = (params) => {
+      chartConfig.value.params = { ...chartConfig.value.params, ...params }
+      console.log('차트 파라미터 업데이트됨:', params)
+      // 설정이 완료되면 자동으로 다음 단계로 진행
       if (currentStep.value === 2) {
         currentStep.value = 3
       }
     }
 
-    const handleDetailsChange = (details) => {
-      chartConfig.value.slice_name = details.slice_name
-      chartConfig.value.description = details.description
+    // ✅ 누락된 updateChartConfig 함수 추가
+    const updateChartConfig = (config) => {
+      chartConfig.value.slice_name = config.slice_name
+      chartConfig.value.description = config.description
+      console.log('차트 정보 업데이트됨:', config)
+      // 정보가 입력되면 자동으로 다음 단계로 진행
       if (currentStep.value === 3) {
         currentStep.value = 4
       }
@@ -208,17 +279,130 @@ export default defineComponent({
         return
       }
 
+      if (!selectedDataset.value || !chartConfig.value.viz_type) {
+        message.error('데이터셋과 차트 타입을 선택해주세요.')
+        return
+      }
+
+      if (!chartConfig.value.params.metrics || chartConfig.value.params.metrics.length === 0) {
+        message.error('메트릭을 최소 1개 이상 선택해주세요.')
+        return
+      }
+
       previewLoading.value = true
       try {
-        const data = await supersetAPI.getChartData(null, {
-          datasource_id: chartConfig.value.datasource,
-          viz_type: chartConfig.value.viz_type,
-          ...chartConfig.value.params
-        })
-        chartData.value = data
+        console.log('=== Superset 정보 확인 ===')
+        
+        // 1. Superset 버전 확인
+        try {
+          const healthResponse = await supersetAPI.api.get('/health')
+          console.log('Superset Health:', healthResponse.data)
+        } catch (e) {
+          console.log('Health 체크 실패:', e)
+        }
+
+        // 2. 이용 가능한 차트 타입 확인
+        try {
+          const vizTypesResponse = await supersetAPI.api.get('/api/v1/chart/viz_types')
+          console.log('Available Viz Types:', vizTypesResponse.data)
+        } catch (e) {
+          console.log('Viz Types 조회 실패:', e)
+        }
+
+        // 3. 데이터셋 정보 다시 확인
+        try {
+          const datasetResponse = await supersetAPI.api.get(`/api/v1/dataset/${selectedDataset.value.id}`)
+          console.log('Dataset Info:', datasetResponse.data)
+        } catch (e) {
+          console.log('Dataset 정보 조회 실패:', e)
+        }
+
+        console.log('=== SQL Lab API 시도 ===')
+        
+        // 4. SQL Lab API로 직접 쿼리 시도
+        try {
+          const sqlPayload = {
+            database_id: selectedDataset.value.database?.id,
+            sql: `SELECT * FROM ${selectedDataset.value.table_name} LIMIT 10`,
+            schema: selectedDataset.value.schema || 'sample_dashboard'
+          }
+          
+          console.log('SQL 요청:', sqlPayload)
+          const sqlResponse = await supersetAPI.api.post('/api/v1/sqllab/execute/', sqlPayload)
+          console.log('SQL 응답:', sqlResponse.data)
+          
+          // SQL 결과를 차트 데이터 형식으로 변환
+          chartData.value = {
+            query: {
+              rowcount: sqlResponse.data.rowcount || 0
+            },
+            data: sqlResponse.data.data || []
+          }
+          
+          message.success('SQL Lab을 통한 데이터 조회 성공!')
+          return
+          
+        } catch (sqlError) {
+          console.error('SQL Lab 시도 실패:', sqlError)
+        }
+
+        console.log('=== Legacy API 시도 ===')
+        
+        // 5. 레거시 API 형식 시도
+        try {
+          const legacyPayload = {
+            slice_id: null,
+            datasource_id: selectedDataset.value.id,
+            datasource_type: 'table',
+            viz_type: 'table',
+            form_data: JSON.stringify({
+              datasource: `${selectedDataset.value.id}__table`,
+              viz_type: 'table',
+              metrics: ['count'],
+              row_limit: 100
+            })
+          }
+          
+          console.log('Legacy 요청:', legacyPayload)
+          const legacyResponse = await supersetAPI.api.post('/superset/explore_json/', legacyPayload)
+          console.log('Legacy 응답:', legacyResponse.data)
+          
+          chartData.value = legacyResponse.data
+          message.success('Legacy API로 데이터 조회 성공!')
+          return
+          
+        } catch (legacyError) {
+          console.error('Legacy API 실패:', legacyError)
+        }
+
+        console.log('=== 심플 테스트 ===')
+        
+        // 6. 아주 간단한 GET 요청으로 테스트
+        try {
+          const simpleResponse = await supersetAPI.api.get(`/api/v1/dataset/${selectedDataset.value.id}/samples`)
+          console.log('Simple samples 응답:', simpleResponse.data)
+          
+          // 샘플 데이터를 차트 형식으로 변환
+          chartData.value = {
+            query: {
+              rowcount: simpleResponse.data?.length || 0
+            },
+            data: simpleResponse.data || []
+          }
+          
+          message.success('Dataset samples 조회 성공!')
+          return
+          
+        } catch (simpleError) {
+          console.error('Simple test 실패:', simpleError)
+        }
+
+        // 모든 방법 실패
+        throw new Error('모든 API 접근 방법이 실패했습니다.')
+        
       } catch (error) {
         console.error('차트 미리보기 오류:', error)
-        message.error('차트 미리보기를 불러오는 중 오류가 발생했습니다.')
+        message.error(`차트 미리보기를 불러오는 중 오류가 발생했습니다: ${error.message}`)
       } finally {
         previewLoading.value = false
       }
@@ -230,6 +414,12 @@ export default defineComponent({
         return
       }
 
+      // 필수 필드 검증
+      if (!chartConfig.value.slice_name.trim()) {
+        message.error('차트 이름을 입력해주세요.')
+        return
+      }
+
       try {
         await supersetAPI.createChart(chartConfig.value)
         message.success('차트가 성공적으로 생성되었습니다!')
@@ -237,26 +427,6 @@ export default defineComponent({
       } catch (error) {
         console.error('차트 저장 오류:', error)
         message.error('차트 저장 중 오류가 발생했습니다.')
-      }
-    }
-
-    const goToStep = (step) => {
-      if (step <= currentStep.value) {
-        currentStep.value = step
-      }
-    }
-
-    const handleDatasetChange = async (datasetId) => {
-      const dataset = datasets.value.find(d => d.id === datasetId)
-      selectedDataset.value = dataset
-      chartConfig.value.datasource_id = datasetId
-      
-      try {
-        await loadDatasetColumns(datasetId)
-        console.log('데이터셋 변경됨:', dataset)
-      } catch (error) {
-        console.error('데이터셋 컬럼 로드 오류:', error)
-        message.error('데이터셋 컬럼 정보를 불러오는 중 오류가 발생했습니다.')
       }
     }
 
@@ -287,11 +457,6 @@ export default defineComponent({
           // 자동으로 데이터셋 선택
           await handleDatasetChange(datasetId)
           message.success(`${datasetName} 데이터셋이 선택되었습니다.`)
-          
-          // 1단계에서 2단계로 자동 진행
-          if (currentStep.value === 0) {
-            currentStep.value = 1
-          }
         } else {
           message.warning(`데이터셋 ID ${datasetId}를 찾을 수 없습니다.`)
         }
@@ -304,21 +469,35 @@ export default defineComponent({
       datasets,
       selectedDataset,
       datasetColumns,
+      datasetMetrics,
       chartConfig,
       chartData,
       previewLoading,
       steps,
       canCreateChart,
-      loadDatasets,
-      loadDatasetColumns,
-      handleDatasetSelect,
-      handleChartTypeSelect,
-      handleConfigChange,
-      handleDetailsChange,
+      // ✅ 누락된 함수들을 return에 추가
+      setCurrentStep,
+      resetForm,
+      handleDatasetChange,
+      handleChartTypeChange,
+      updateChartParams,
+      updateChartConfig,
       previewChart,
       saveChart,
-      goToStep
+      goToNextStep,
+      goToPrevStep,
+      h
     }
   }
 })
 </script>
+
+<style scoped>
+.ant-steps-item {
+  cursor: pointer;
+}
+
+.ant-steps-item:hover {
+  background-color: #f5f5f5;
+}
+</style>

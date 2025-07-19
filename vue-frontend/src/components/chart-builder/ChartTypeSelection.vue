@@ -1,6 +1,5 @@
 <template>
-  <div>
-    <h3>차트 타입 선택</h3>
+  <a-card title="2단계: 차트 타입 선택" style="margin-bottom: 24px">
     <p style="color: #666; margin-bottom: 24px">
       생성할 차트의 시각화 타입을 선택해주세요.
     </p>
@@ -40,17 +39,22 @@
 
     <div v-if="selectedType" style="margin-top: 24px">
       <a-divider />
-      <h4>선택된 차트 타입: {{ getSelectedChartName() }}</h4>
-
-      <a-button
-        type="primary"
-        @click="$emit('next')"
-        style="margin-top: 16px"
-      >
-        다음 단계
-      </a-button>
+      <div style="display: flex; justify-content: space-between; align-items: center">
+        <div>
+          <h4 style="margin: 0">선택된 차트 타입: {{ getSelectedChartName() }}</h4>
+          <p style="color: #666; margin: 4px 0 0 0">{{ getSelectedChartDescription() }}</p>
+        </div>
+        <a-button
+          type="primary"
+          @click="goToNext"
+          style="margin-left: 16px"
+        >
+          다음 단계
+          <RightOutlined />
+        </a-button>
+      </div>
     </div>
-  </div>
+  </a-card>
 </template>
 
 <script>
@@ -62,7 +66,8 @@ import {
   PieChartOutlined,
   AreaChartOutlined,
   DotChartOutlined,
-  CheckOutlined
+  CheckOutlined,
+  RightOutlined
 } from '@ant-design/icons-vue'
 
 export default defineComponent({
@@ -74,7 +79,8 @@ export default defineComponent({
     PieChartOutlined,
     AreaChartOutlined,
     DotChartOutlined,
-    CheckOutlined
+    CheckOutlined,
+    RightOutlined
   },
   props: {
     selectedType: {
@@ -83,7 +89,7 @@ export default defineComponent({
     }
   },
   emits: ['select', 'next'],
-  setup (props, { emit }) {
+  setup(props, { emit }) {
     const chartTypes = ref([
       {
         key: 'table',
@@ -124,7 +130,13 @@ export default defineComponent({
     ])
 
     const selectChartType = (type) => {
+      console.log('차트 타입 선택:', type)
       emit('select', type)
+    }
+
+    const goToNext = () => {
+      console.log('다음 단계로 이동')
+      emit('next')
     }
 
     const getSelectedChartName = () => {
@@ -132,10 +144,17 @@ export default defineComponent({
       return selected ? selected.name : ''
     }
 
+    const getSelectedChartDescription = () => {
+      const selected = chartTypes.value.find(type => type.key === props.selectedType)
+      return selected ? selected.description : ''
+    }
+
     return {
       chartTypes,
       selectChartType,
-      getSelectedChartName
+      goToNext,
+      getSelectedChartName,
+      getSelectedChartDescription
     }
   }
 })
@@ -143,12 +162,16 @@ export default defineComponent({
 
 <style scoped>
 .selected-chart-type {
-  border-color: #1890ff;
+  border-color: #1890ff !important;
   box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
 }
 
 .ant-card:hover {
   border-color: #1890ff;
   box-shadow: 0 1px 2px -2px rgba(0, 0, 0, 0.16), 0 3px 6px 0 rgba(0, 0, 0, 0.12), 0 5px 12px 4px rgba(0, 0, 0, 0.09);
+}
+
+.ant-card-body {
+  padding: 20px;
 }
 </style>

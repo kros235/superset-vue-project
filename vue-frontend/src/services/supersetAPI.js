@@ -830,15 +830,36 @@ class SupersetAPI {
   }
 
   // 차트 데이터 조회
-  async getChartData(chartId = null, formData = {}) {
+ async getChartData(chartId = null, formData = {}) {
     try {
-      const payload = chartId ? 
-        { chart_id: chartId } : 
-        {
-          datasource: formData.datasource || formData.datasource_id + '__table',
-          viz_type: formData.viz_type || 'table',
-          form_data: formData
+      let payload;
+      
+      if (chartId) {
+        // 기존 차트 ID로 조회하는 경우
+        payload = {
+          chart_id: chartId
         }
+      } else {
+        // 새로운 차트 데이터 조회하는 경우 - Superset UI가 실제로 보내는 형식
+        payload = {
+          datasource: `${formData.datasource_id}__table`,
+          viz_type: formData.viz_type || 'table',
+          form_data: {
+            datasource: `${formData.datasource_id}__table`,
+            viz_type: formData.viz_type || 'table',
+            metrics: formData.metrics || ['count'],
+            groupby: formData.groupby || [],
+            adhoc_filters: [],
+            row_limit: formData.row_limit || 1000,
+            order_desc: formData.order_desc === 'desc',
+            color_scheme: formData.color_scheme || 'bnbColors',
+            ...(formData.granularity_sqla && {
+              granularity_sqla: formData.granularity_sqla,
+              time_range: formData.time_range || 'Last 30 days'
+            })
+          }
+        }
+      }
       
       console.log('차트 데이터 요청:', payload)
       const response = await this.api.post('/api/v1/chart/data', payload)
@@ -846,6 +867,11 @@ class SupersetAPI {
       return response.data
     } catch (error) {
       console.error('차트 데이터 조회 오류:', error)
+      if (error.response) {
+        console.error('응답 상태:', error.response.status)
+        console.error('응답 데이터:', error.response.data)
+        console.error('응답 헤더:', error.response.headers)
+      }
       throw error
     }
   }
