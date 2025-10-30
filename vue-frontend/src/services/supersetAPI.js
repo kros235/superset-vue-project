@@ -1,5 +1,6 @@
 // vue-frontend/src/services/supersetAPI.js
 import axios from 'axios'
+import rison from 'rison';  // 추가
 
 class SupersetAPI {
   constructor() {
@@ -311,22 +312,27 @@ class SupersetAPI {
     }
   }
 
-  // 🔥 특정 스키마의 테이블 목록 조회
-  async getDatabaseTables(databaseId, schemaName = null) {
+  // 테이블 목록 조회 (Rison 형식 사용)
+  async getDatabaseTables(databaseId, schemaName) {
+    console.log('테이블 목록 조회: 데이터베이스', databaseId, '스키마', schemaName);
+  
     try {
-      console.log(`테이블 목록 조회: 데이터베이스 ${databaseId}, 스키마 ${schemaName}`)
+      // Rison 형식으로 쿼리 파라미터 인코딩
+      const params = rison.encode({ schema_name: schemaName });
+      const response = await this.api.get(`/api/v1/database/${databaseId}/tables/?q=${params}`);
+    
+      // 🔥 상세 로그 추가
+      console.log('=== 테이블 API 응답 구조 분석 ===');
+      console.log('전체 응답:', response.data);
+      console.log('response.data.result:', response.data.result);
+      console.log('response.data.options:', response.data.options);
+      console.log('response.data 타입:', typeof response.data);
+      console.log('===========================');
       
-      let url = `/api/v1/database/${databaseId}/tables/`
-      if (schemaName) {
-        url += `?schema_name=${encodeURIComponent(schemaName)}`
-      }
-      
-      const response = await this.api.get(url)
-      console.log('테이블 목록:', response.data.result)
-      return response.data.result
+      return response.data;
     } catch (error) {
-      console.error('테이블 목록 조회 오류:', error)
-      throw error
+      console.error('테이블 목록 조회 오류:', error);
+      throw error;
     }
   }
 
@@ -888,18 +894,29 @@ class SupersetAPI {
 
   // ===== SQL 실행 관련 메서드 =====
 
-  // 🔥 SQL 쿼리 실행
-  async executeSQL(payload) {
+// SQL 쿼리 실행
+  async executeSQL(databaseId, sql, schemaName = null) {
+    console.log('SQL 쿼리 실행 중...');
+    const payload = {
+      database_id: databaseId,
+      sql: sql,
+      schema: schemaName,
+      limit: 1000,
+      select_as_cta: false,
+      tmp_table_name: '',
+      client_id: `client_${Date.now()}`,
+    };
+  
+    console.log('쿼리 페이로드:', payload);
+  
     try {
-      console.log('SQL 쿼리 실행 중...')
-      console.log('쿼리 페이로드:', payload)
+      const response = await this.api.post('/api/v1/sqllab/execute/', payload);
       
-      const response = await this.api.post('/api/v1/sqllab/execute/', payload)
-      console.log('SQL 실행 결과:', response.data)
-      return response.data
+      console.log('SQL 실행 결과:', response.data);
+      return response.data;
     } catch (error) {
-      console.error('SQL 실행 오류:', error)
-      throw error
+      console.error('SQL 실행 오류:', error);
+      throw error;
     }
   }
 

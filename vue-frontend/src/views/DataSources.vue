@@ -844,12 +844,27 @@ export default {
     
         // 1. supersetAPI의 개선된 getDatabaseTables 메서드 사용
         try {
-          const tables = await supersetAPI.getDatabaseTables(databaseId, schema)
+          const tablesResponse = await supersetAPI.getDatabaseTables(databaseId, schema)
+          
+          console.log('API 테이블 조회 원본 응답:', tablesResponse)
+          
+          // 🔥 응답 구조 처리
+          let tables = []
+          
+          if (Array.isArray(tablesResponse)) {
+            tables = tablesResponse
+          } else if (tablesResponse && tablesResponse.result) {
+            tables = tablesResponse.result
+          } else if (tablesResponse && tablesResponse.options) {
+            tables = tablesResponse.options
+          }
+          
+          console.log('추출된 테이블 배열:', tables)
       
           if (Array.isArray(tables) && tables.length > 0) {
             console.log(`API로 테이블 조회 성공: ${tables.length}개`)
             return tables.map(table => ({
-              name: table.name || table.table_name,
+              name: table.value || table.label || table.name || table.table_name,
               type: table.type || 'table',
               schema: table.schema || schema,
               rows: table.rows || table.table_rows || null,
