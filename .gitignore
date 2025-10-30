@@ -13,6 +13,17 @@ frontend/.env.development.local
 frontend/.env.test.local
 frontend/.env.production.local
 
+# Vue.js Frontend (추가)
+vue_frontend/node_modules/
+vue_frontend/dist/
+vue_frontend/.env.local
+vue_frontend/.env.development.local
+vue_frontend/.env.test.local
+vue_frontend/.env.production.local
+vue_frontend/npm-debug.log*
+vue_frontend/yarn-debug.log*
+vue_frontend/yarn-error.log*
+
 # Python
 __pycache__/
 *.py[cod]
