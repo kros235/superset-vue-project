@@ -121,36 +121,158 @@ export default defineComponent({
 
     const chartWidth = computed(() => props.width)
     const chartHeight = computed(() => props.height)
-
-    // 테이블용 데이터 처리
-    const processedData = computed(() => {
-      if (!props.chartData?.data) return []
-      
-      return props.chartData.data.map((row, index) => ({
+// 🔥 Superset 데이터 구조 파싱 (수정됨)
+const parseChartData = computed(() => {
+  if (!props.chartData) return null
+  
+  console.log('🔍 차트 데이터 파싱 시작:', props.chartData)
+  
+  const data = props.chartData.data || []
+  const colnames = props.chartData.colnames || []
+  const coltypes = props.chartData.coltypes || []
+  
+  console.log('원본 데이터:', data)
+  console.log('컬럼명:', colnames)
+  console.log('컬럼 타입:', coltypes)
+  
+  // 🔥 데이터 형식 감지 및 정규화
+  let parsedData = []
+  
+  if (data.length > 0) {
+    // 첫 번째 행으로 형식 판단
+    const firstRow = data[0]
+    
+    if (Array.isArray(firstRow)) {
+      // ✅ 2차원 배열 형식: [[value1, value2], [...]]
+      console.log('✅ 2차원 배열 형식 감지')
+      parsedData = data.map((row, index) => {
+        const obj = { key: index }
+        colnames.forEach((colname, colIndex) => {
+          obj[colname] = row[colIndex]
+        })
+        return obj
+      })
+    } else if (typeof firstRow === 'object' && firstRow !== null) {
+      // ✅ 객체 배열 형식: [{col1: val1, col2: val2}, {...}]
+      console.log('✅ 객체 배열 형식 감지')
+      parsedData = data.map((row, index) => ({
         key: index,
         ...row
       }))
+      
+      // colnames가 없으면 첫 번째 객체의 키로 생성
+      if (colnames.length === 0 && parsedData.length > 0) {
+        const extractedColnames = Object.keys(parsedData[0]).filter(key => key !== 'key')
+        console.log('컬럼명 추출:', extractedColnames)
+        return {
+          data: parsedData,
+          colnames: extractedColnames,
+          coltypes: coltypes.length > 0 ? coltypes : new Array(extractedColnames.length).fill(0),
+          rowcount: props.chartData.rowcount || data.length
+        }
+      }
+    } else {
+      // ❌ 알 수 없는 형식
+      console.error('❌ 알 수 없는 데이터 형식:', firstRow)
+      return null
+    }
+  }
+  
+  console.log('파싱된 데이터:', parsedData)
+  
+  return {
+    data: parsedData,
+    colnames: colnames,
+    coltypes: coltypes,
+    rowcount: props.chartData.rowcount || data.length
+  }
+})
+
+    // 테이블용 데이터 처리
+    const processedData = computed(() => {
+      const parsed = parseChartData.value
+      if (!parsed || !parsed.data) return []
+      
+      return parsed.data
     })
 
     // 테이블 컬럼 정의
     const tableColumns = computed(() => {
-      if (!props.chartData?.data || props.chartData.data.length === 0) {
+      const parsed = parseChartData.value
+      if (!parsed || !parsed.colnames || parsed.colnames.length === 0) {
         return []
       }
       
-      const firstRow = props.chartData.data[0]
-      return Object.keys(firstRow).map(key => ({
-        title: key.charAt(0).toUpperCase() + key.slice(1),
-        dataIndex: key,
-        key: key,
+      return parsed.colnames.map((colname, index) => ({
+        title: colname.charAt(0).toUpperCase() + colname.slice(1),
+        dataIndex: colname,
+        key: colname,
         sorter: (a, b) => {
-          if (typeof a[key] === 'number' && typeof b[key] === 'number') {
-            return a[key] - b[key]
+          const aVal = a[colname]
+          const bVal = b[colname]
+          
+          if (typeof aVal === 'number' && typeof bVal === 'number') {
+            return aVal - bVal
           }
-          return String(a[key]).localeCompare(String(b[key]))
+          return String(aVal || '').localeCompare(String(bVal || ''))
         }
       }))
     })
+
+// 🔥 차트용 데이터 추출 (수정됨)
+const chartDataForVisualization = computed(() => {
+  const parsed = parseChartData.value
+  if (!parsed || !parsed.data || parsed.data.length === 0) {
+    console.warn('⚠️ 파싱된 데이터가 없습니다')
+    return []
+  }
+  
+  const data = parsed.data
+  const colnames = parsed.colnames
+  
+  console.log('시각화용 데이터 추출 시작')
+  console.log('  - 데이터:', data)
+  console.log('  - 컬럼명:', colnames)
+  
+  // 🔥 파이 차트의 경우: GROUP BY가 없으면 전체 COUNT만 있는 경우
+  if (colnames.length === 1) {
+    console.log('📊 단일 컬럼 데이터 (전체 집계)')
+    // 단일 값만 있는 경우 (예: 전체 COUNT)
+    const value = data[0][colnames[0]]
+    console.log('  - 값:', value)
+    
+    return [{
+      name: 'Total',
+      label: 'Total',
+      value: Number(value) || 0,
+      count: Number(value) || 0
+    }]
+  }
+  
+  // 🔥 GROUP BY가 있는 경우: 첫 번째 컬럼 = 라벨, 두 번째 컬럼 = 값
+  if (colnames.length >= 2) {
+    console.log('📊 다중 컬럼 데이터 (그룹화된 데이터)')
+    const result = data.map(row => {
+      const labelValue = row[colnames[0]]
+      const numValue = row[colnames[1]]
+      
+      console.log(`  - ${labelValue}: ${numValue}`)
+      
+      return {
+        name: String(labelValue || 'Unknown'),
+        label: String(labelValue || 'Unknown'),
+        value: Number(numValue) || 0,
+        count: Number(numValue) || 0
+      }
+    })
+    
+    console.log('✅ 변환된 시각화 데이터:', result)
+    return result
+  }
+  
+  console.warn('⚠️ 알 수 없는 데이터 구조')
+  return []
+})
 
     // 차트 색상 팔레트
     const colorPalette = [
@@ -160,11 +282,16 @@ export default defineComponent({
 
     // 막대 차트 렌더링
     const renderBarChart = () => {
-      if (!barCanvas.value || !props.chartData?.data) return
+      if (!barCanvas.value) return
+      
+      const data = chartDataForVisualization.value
+      if (!data || data.length === 0) {
+        console.warn('렌더링할 데이터가 없습니다')
+        return
+      }
 
       const canvas = barCanvas.value
       const ctx = canvas.getContext('2d')
-      const data = props.chartData.data
       
       // 캔버스 초기화
       ctx.clearRect(0, 0, canvas.width, canvas.height)
@@ -182,6 +309,8 @@ export default defineComponent({
       const values = data.map(d => d.value || d.count || 0)
       const labels = data.map(d => d.name || d.label || 'Unknown')
       const maxValue = Math.max(...values, 1)
+      
+      console.log('막대 차트 데이터:', { values, labels, maxValue })
       
       // 막대 그리기
       const barWidth = chartArea.width / data.length * 0.8
@@ -226,69 +355,125 @@ export default defineComponent({
     }
 
     // 파이 차트 렌더링
-    const renderPieChart = () => {
-      if (!pieCanvas.value || !props.chartData?.data) return
+const renderPieChart = () => {
+  if (!pieCanvas.value) return
+  
+  const data = chartDataForVisualization.value
+  if (!data || data.length === 0) {
+    console.warn('⚠️ 렌더링할 데이터가 없습니다')
+    return
+  }
 
-      const canvas = pieCanvas.value
-      const ctx = canvas.getContext('2d')
-      const data = props.chartData.data
-      
-      // 캔버스 초기화
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
-      
-      // 원 중심과 반지름
-      const centerX = canvas.width / 2
-      const centerY = canvas.height / 2
-      const radius = Math.min(centerX, centerY) - 60
-      
-      // 데이터 값 추출 및 총합 계산
-      const values = data.map(d => d.value || d.count || 0)
-      const labels = data.map(d => d.name || d.label || 'Unknown')
-      const total = values.reduce((sum, val) => sum + val, 0)
-      
-      // 파이 조각 그리기
-      let currentAngle = -Math.PI / 2 // 12시 방향부터 시작
-      
-      data.forEach((item, index) => {
-        const value = values[index]
-        const sliceAngle = (value / total) * 2 * Math.PI
-        
-        // 파이 조각 그리기
-        ctx.fillStyle = colorPalette[index % colorPalette.length]
-        ctx.beginPath()
-        ctx.moveTo(centerX, centerY)
-        ctx.arc(centerX, centerY, radius, currentAngle, currentAngle + sliceAngle)
-        ctx.closePath()
-        ctx.fill()
-        
-        // 경계선
-        ctx.strokeStyle = '#fff'
-        ctx.lineWidth = 2
-        ctx.stroke()
-        
-        // 라벨과 퍼센트 표시
-        const labelAngle = currentAngle + sliceAngle / 2
-        const labelX = centerX + Math.cos(labelAngle) * (radius + 30)
-        const labelY = centerY + Math.sin(labelAngle) * (radius + 30)
-        
-        ctx.fillStyle = '#333'
-        ctx.font = '12px Arial'
-        ctx.textAlign = 'center'
-        const percentage = ((value / total) * 100).toFixed(1)
-        ctx.fillText(`${labels[index]}`, labelX, labelY - 8)
-        ctx.fillText(`${percentage}%`, labelX, labelY + 8)
-        
-        currentAngle += sliceAngle
-      })
-    }
+  const canvas = pieCanvas.value
+  const ctx = canvas.getContext('2d')
+  
+  // 캔버스 초기화
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  
+  // 원 중심과 반지름
+  const centerX = canvas.width / 2
+  const centerY = canvas.height / 2
+  const radius = Math.min(centerX, centerY) - 60
+  
+  // 데이터 값 추출 및 총합 계산
+  const values = data.map(d => Number(d.value) || Number(d.count) || 0)
+  const labels = data.map(d => String(d.name) || String(d.label) || 'Unknown')
+  const total = values.reduce((sum, val) => sum + val, 0)
+  
+  console.log('📊 파이 차트 렌더링 정보:')
+  console.log('  - 값:', values)
+  console.log('  - 라벨:', labels)
+  console.log('  - 총합:', total)
+  
+  if (total === 0) {
+    console.error('❌ 총합이 0입니다')
+    // 오류 메시지 표시
+    ctx.fillStyle = '#666'
+    ctx.font = '16px Arial'
+    ctx.textAlign = 'center'
+    ctx.fillText('데이터 값이 0입니다', centerX, centerY)
+    return
+  }
+  
+  // 🔥 단일 값인 경우 (전체 집계) 특별 처리
+  if (data.length === 1) {
+    console.log('📌 단일 값 파이 차트 (100%)')
+    
+    // 전체 원 그리기
+    ctx.fillStyle = colorPalette[0]
+    ctx.beginPath()
+    ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI)
+    ctx.fill()
+    
+    // 경계선
+    ctx.strokeStyle = '#fff'
+    ctx.lineWidth = 2
+    ctx.stroke()
+    
+    // 중앙에 값 표시
+    ctx.fillStyle = '#fff'
+    ctx.font = 'bold 24px Arial'
+    ctx.textAlign = 'center'
+    ctx.fillText(values[0].toString(), centerX, centerY)
+    
+    // 라벨 표시
+    ctx.fillStyle = '#333'
+    ctx.font = '14px Arial'
+    ctx.fillText(labels[0], centerX, centerY + radius + 30)
+    
+    return
+  }
+  
+  // 파이 조각 그리기 (다중 값)
+  let currentAngle = -Math.PI / 2 // 12시 방향부터 시작
+  
+  data.forEach((item, index) => {
+    const value = values[index]
+    const sliceAngle = (value / total) * 2 * Math.PI
+    
+    // 파이 조각 그리기
+    ctx.fillStyle = colorPalette[index % colorPalette.length]
+    ctx.beginPath()
+    ctx.moveTo(centerX, centerY)
+    ctx.arc(centerX, centerY, radius, currentAngle, currentAngle + sliceAngle)
+    ctx.closePath()
+    ctx.fill()
+    
+    // 경계선
+    ctx.strokeStyle = '#fff'
+    ctx.lineWidth = 2
+    ctx.stroke()
+    
+    // 라벨과 퍼센트 표시
+    const labelAngle = currentAngle + sliceAngle / 2
+    const labelX = centerX + Math.cos(labelAngle) * (radius + 30)
+    const labelY = centerY + Math.sin(labelAngle) * (radius + 30)
+    
+    ctx.fillStyle = '#333'
+    ctx.font = '12px Arial'
+    ctx.textAlign = 'center'
+    const percentage = ((value / total) * 100).toFixed(1)
+    ctx.fillText(`${labels[index]}`, labelX, labelY - 8)
+    ctx.fillText(`${value} (${percentage}%)`, labelX, labelY + 8)
+    
+    currentAngle += sliceAngle
+  })
+  
+  console.log('✅ 파이 차트 렌더링 완료')
+}
 
     // 선 차트 렌더링
     const renderLineChart = () => {
-      if (!lineCanvas.value || !props.chartData?.data) return
+      if (!lineCanvas.value) return
+      
+      const data = chartDataForVisualization.value
+      if (!data || data.length === 0) {
+        console.warn('렌더링할 데이터가 없습니다')
+        return
+      }
 
       const canvas = lineCanvas.value
       const ctx = canvas.getContext('2d')
-      const data = props.chartData.data
       
       // 캔버스 초기화
       ctx.clearRect(0, 0, canvas.width, canvas.height)
@@ -308,6 +493,8 @@ export default defineComponent({
       const maxValue = Math.max(...values, 1)
       const minValue = Math.min(...values, 0)
       
+      console.log('선 차트 데이터:', { values, labels, maxValue, minValue })
+      
       // 축 그리기
       ctx.strokeStyle = '#333'
       ctx.lineWidth = 1
@@ -325,8 +512,8 @@ export default defineComponent({
       
       data.forEach((item, index) => {
         const value = values[index]
-        const x = chartArea.x + (index / (data.length - 1)) * chartArea.width
-        const y = chartArea.y + chartArea.height - ((value - minValue) / (maxValue - minValue)) * chartArea.height
+        const x = chartArea.x + (index / (data.length - 1 || 1)) * chartArea.width
+        const y = chartArea.y + chartArea.height - ((value - minValue) / (maxValue - minValue || 1)) * chartArea.height
         
         if (index === 0) {
           ctx.moveTo(x, y)
@@ -346,7 +533,10 @@ export default defineComponent({
 
     // 차트 렌더링 함수
     const renderChart = async () => {
-      if (!props.chartData) return
+      if (!props.chartData) {
+        console.warn('chartData가 없습니다')
+        return
+      }
       
       await nextTick()
       
@@ -354,8 +544,11 @@ export default defineComponent({
         loading.value = true
         error.value = null
         
+        console.log('차트 렌더링 시작:', props.chartConfig.viz_type)
+        
         switch (props.chartConfig.viz_type) {
           case 'dist_bar':
+          case 'bar':
             renderBarChart()
             break
           case 'pie':
@@ -372,6 +565,7 @@ export default defineComponent({
         }
         
       } catch (err) {
+        console.error('차트 렌더링 오류:', err)
         error.value = {
           title: '차트 렌더링 실패',
           message: err.message
@@ -383,15 +577,23 @@ export default defineComponent({
 
     // Superset에서 열기
     const openInSuperset = () => {
-      // 실제 구현에서는 Superset URL을 구성해서 새 창으로 열기
-      window.open('http://localhost:8088', '_blank')
+      const supersetUrl = process.env.VUE_APP_SUPERSET_URL || 'http://localhost:8088'
+      window.open(supersetUrl, '_blank')
     }
 
     // 차트 데이터 변경 감지
-    watch(() => props.chartData, renderChart, { deep: true })
-    watch(() => props.chartConfig.viz_type, renderChart)
+    watch(() => props.chartData, () => {
+      console.log('chartData 변경 감지:', props.chartData)
+      renderChart()
+    }, { deep: true })
+    
+    watch(() => props.chartConfig.viz_type, () => {
+      console.log('viz_type 변경 감지:', props.chartConfig.viz_type)
+      renderChart()
+    })
 
     onMounted(() => {
+      console.log('ChartRenderer 마운트됨')
       if (props.chartData) {
         renderChart()
       }
@@ -408,6 +610,8 @@ export default defineComponent({
       chartHeight,
       processedData,
       tableColumns,
+      parseChartData,
+      chartDataForVisualization,
       openInSuperset
     }
   }
