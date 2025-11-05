@@ -1260,6 +1260,178 @@ class SupersetAPI {
       return null
     }
   }
+
+
+  // ===== 🆕 차트 익스포트 관련 메서드 추가 =====
+
+  // 🔥 차트 데이터를 JSON 형식으로 반환
+  async exportChartAsJSON(chartId, formData = {}) {
+    try {
+      console.log(`차트 JSON 익스포트: ${chartId}`)
+      const response = await this.api.post(`/api/v1/chart/${chartId}/data/`, {
+        form_data: formData
+      })
+      console.log('JSON 데이터:', response.data)
+      return response.data
+    } catch (error) {
+      console.error('JSON 익스포트 오류:', error)
+      throw error
+    }
+  }
+
+  // 🔥 차트 데이터를 HTML 테이블 형식으로 변환
+  async exportChartAsHTML(chartId, formData = {}) {
+    try {
+      console.log(`차트 HTML 익스포트: ${chartId}`)
+      const data = await this.exportChartAsJSON(chartId, formData)
+      
+      if (!data.result || data.result.length === 0) {
+        return '<p>데이터가 없습니다.</p>'
+      }
+
+      const columns = Object.keys(data.result[0].data[0] || {})
+      const rows = data.result[0].data
+
+      let html = `
+        <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%; font-family: Arial, sans-serif;">
+          <thead>
+            <tr style="background-color: #1890ff; color: white;">
+              ${columns.map(col => `<th style="padding: 12px; text-align: left;">${col}</th>`).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((row, idx) => `
+              <tr style="background-color: ${idx % 2 === 0 ? '#f5f5f5' : 'white'};">
+                ${columns.map(col => `<td style="padding: 8px;">${row[col] !== null ? row[col] : 'N/A'}</td>`).join('')}
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `
+      
+      return html
+    } catch (error) {
+      console.error('HTML 익스포트 오류:', error)
+      throw error
+    }
+  }
+
+  // 🔥 차트 데이터를 CSV 형식으로 변환
+  async exportChartAsCSV(chartId, formData = {}) {
+    try {
+      console.log(`차트 CSV 익스포트: ${chartId}`)
+      const data = await this.exportChartAsJSON(chartId, formData)
+      
+      if (!data.result || data.result.length === 0) {
+        return ''
+      }
+
+      const columns = Object.keys(data.result[0].data[0] || {})
+      const rows = data.result[0].data
+
+      let csv = columns.join(',') + '\n'
+      rows.forEach(row => {
+        csv += columns.map(col => {
+          const value = row[col]
+          return typeof value === 'string' && value.includes(',') 
+            ? `"${value}"` 
+            : value
+        }).join(',') + '\n'
+      })
+
+      return csv
+    } catch (error) {
+      console.error('CSV 익스포트 오류:', error)
+      throw error
+    }
+  }
+
+  // 🔥 차트를 이미지로 익스포트 (PNG)
+  async exportChartAsImage(chartId, width = 800, height = 600) {
+    try {
+      console.log(`차트 이미지 익스포트: ${chartId}`)
+      // Superset의 cache_screenshot API 활용
+      const response = await this.api.get(`/api/v1/chart/${chartId}/cache_screenshot/`, {
+        params: {
+          width: width,
+          height: height
+        },
+        responseType: 'blob'
+      })
+      
+      // Blob을 Base64로 변환
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onloadend = () => resolve(reader.result)
+        reader.onerror = reject
+        reader.readAsDataURL(response.data)
+      })
+    } catch (error) {
+      console.error('이미지 익스포트 오류:', error)
+      
+      // 대체 방법: explore 페이지의 스크린샷 API 시도
+      try {
+        const response = await this.api.get(`/superset/explore_json/`, {
+          params: {
+            form_data: JSON.stringify({ slice_id: chartId }),
+            screenshot: true
+          },
+          responseType: 'blob'
+        })
+        
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onloadend = () => resolve(reader.result)
+          reader.onerror = reject
+          reader.readAsDataURL(response.data)
+        })
+      } catch (fallbackError) {
+        console.error('대체 이미지 익스포트도 실패:', fallbackError)
+        throw new Error('이미지 익스포트를 지원하지 않습니다. Superset 설정을 확인하세요.')
+      }
+    }
+  }
+
+  // 🔥 차트 iframe 임베드 URL 생성
+  getChartEmbedUrl(chartId, standalone = true) {
+    try {
+      console.log(`차트 임베드 URL 생성: ${chartId}`)
+      
+      // standalone=true: 독립 실행형 차트 (헤더/사이드바 없음)
+      const params = new URLSearchParams({
+        standalone: standalone ? 'true' : 'false',
+        height: 'auto'
+      })
+      
+      const embedUrl = `/superset/explore/?form_data=%7B%22slice_id%22%3A${chartId}%7D&${params.toString()}`
+      
+      console.log('임베드 URL:', embedUrl)
+      return embedUrl
+    } catch (error) {
+      console.error('임베드 URL 생성 오류:', error)
+      throw error
+    }
+  }
+
+  // 🔥 미리보기용 차트 데이터 (아직 저장되지 않은 차트)
+  async getPreviewChartData(formData) {
+    try {
+      console.log('미리보기 차트 데이터 조회')
+      console.log('폼 데이터:', formData)
+      
+      const response = await this.api.post('/api/v1/chart/data', {
+        queries: [{
+          ...formData
+        }]
+      })
+      
+      console.log('미리보기 데이터:', response.data)
+      return response.data
+    } catch (error) {
+      console.error('미리보기 데이터 조회 오류:', error)
+      throw error
+    }
+  }
 }
 
 // 싱글톤 인스턴스 생성 및 내보내기
