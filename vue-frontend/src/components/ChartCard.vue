@@ -7,100 +7,87 @@
     <template #title>
       <div style="display: flex; justify-content: space-between; align-items: center">
         <span>{{ chart.slice_name || '제목 없음' }}</span>
+        
+        <!-- 액션 버튼 -->
         <a-dropdown v-if="showActions" :trigger="['click']">
-          <a-button type="text" size="small">
-            <template #icon>
-              <MoreOutlined />
-            </template>
-          </a-button>
           <template #overlay>
             <a-menu @click="handleAction">
               <a-menu-item key="edit" v-if="canEdit">
-                <EditOutlined />
-                편집
+                <EditOutlined /> 편집
               </a-menu-item>
               <a-menu-item key="refresh">
-                <ReloadOutlined />
-                새로고침
+                <ReloadOutlined /> 새로고침
               </a-menu-item>
               <a-menu-item key="fullscreen">
-                <FullscreenOutlined />
-                전체화면
+                <FullscreenOutlined /> 전체화면
               </a-menu-item>
               <a-menu-divider v-if="canDelete" />
-              <a-menu-item key="delete" v-if="canDelete" style="color: red">
-                <DeleteOutlined />
-                삭제
+              <a-menu-item key="delete" v-if="canDelete" danger>
+                <DeleteOutlined /> 삭제
               </a-menu-item>
             </a-menu>
           </template>
+          <a-button type="text" size="small">
+            <MoreOutlined />
+          </a-button>
         </a-dropdown>
       </div>
     </template>
 
+    <!-- 🔥 메인 컨텐츠 영역 - 조건문 순서 수정 -->
     <div style="height: 300px; display: flex; align-items: center; justify-content: center">
-      <!-- 로딩 상태 -->
-      <div v-if="loading" style="text-align: center">
-        <a-spin size="large" />
-        <div style="margin-top: 16px; color: #666">
-          차트를 불러오는 중...
-        </div>
-      </div>
-
       <!-- 에러 상태 -->
-      <div v-else-if="error" style="text-align: center; color: #ff4d4f">
-        <ExclamationCircleOutlined style="font-size: 48px; margin-bottom: 16px" />
-        <div>{{ error }}</div>
-        <a-button style="margin-top: 8px" @click="$emit('refresh')">
-          다시 시도
+      <div v-if="error" style="text-align: center; color: #ff4d4f;">
+        <ExclamationCircleOutlined style="font-size: 48px; margin-bottom: 16px;" />
+        <p>{{ error }}</p>
+      </div>
+      
+      <!-- 로딩 상태 -->
+      <div v-else-if="loading" style="text-align: center;">
+        <a-spin size="large" />
+        <p style="margin-top: 16px; color: #999;">데이터 로딩 중...</p>
+      </div>
+      
+      <!-- 데이터가 없는 경우 -->
+      <div v-else-if="!chartData || !chartData.data" style="text-align: center; color: #999;">
+        <InboxOutlined style="font-size: 48px; margin-bottom: 16px;" />
+        <p>표시할 데이터가 없습니다</p>
+        <a-button type="primary" size="small" @click="$emit('refresh', chart.id)">
+          <ReloadOutlined /> 데이터 불러오기
         </a-button>
       </div>
-
-      <!-- 데이터가 없는 경우 -->
-      <div v-else-if="!chartData || !chartData.data" style="text-align: center; color: #999">
-        <InboxOutlined style="font-size: 48px; margin-bottom: 16px" />
-        <div>표시할 데이터가 없습니다</div>
-      </div>
-
-      <!-- 차트 렌더링 영역 -->
-      <div v-else style="width: 100%; height: 100%">
-        <!-- 테이블 차트 -->
-        <div v-if="chart.viz_type === 'table'" style="height: 100%; overflow: auto">
-          <a-table
-            :columns="tableColumns"
-            :data-source="tableData"
-            :pagination="false"
-            size="small"
-            :scroll="{ y: 250 }"
+      
+      <!-- 데이터가 있는 경우 -->
+      <div v-else style="width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #fafafa;">
+        <!-- 🔥 Superset 차트 썸네일 이미지 -->
+        <div v-if="chart.thumbnail_url" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
+          <img 
+            :src="getChartThumbnailUrl()"
+            :alt="chart.slice_name"
+            style="max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px;"
+            @error="handleImageError"
           />
         </div>
-
-        <!-- 바 차트 -->
-        <div v-else-if="chart.viz_type === 'dist_bar'" ref="barChartRef" style="width: 100%; height: 100%">
-          <!-- 바 차트 구현 -->
-        </div>
-
-        <!-- 라인 차트 -->
-        <div v-else-if="chart.viz_type === 'line'" ref="lineChartRef" style="width: 100%; height: 100%">
-          <!-- 라인 차트 구현 -->
-        </div>
-
-        <!-- 파이 차트 -->
-        <div v-else-if="chart.viz_type === 'pie'" ref="pieChartRef" style="width: 100%; height: 100%">
-          <!-- 파이 차트 구현 -->
-        </div>
-
-        <!-- 기타 차트 타입 -->
-        <div v-else style="text-align: center; color: #999">
-          <BarChartOutlined style="font-size: 48px; margin-bottom: 16px" />
-          <div>{{ chart.viz_type }} 차트</div>
-          <div style="font-size: 12px; margin-top: 8px">
-            이 차트 타입은 아직 지원되지 않습니다
-          </div>
+        
+        <!-- 썸네일 없거나 로드 실패 시 -->
+        <div v-else style="text-align: center; color: #999;">
+          <BarChartOutlined style="font-size: 48px; color: #1890ff; margin-bottom: 16px;" />
+          <p>{{ chart.viz_type }} 차트</p>
+          <p style="font-size: 12px;">
+            데이터 행 수: {{ chartData.data?.rowcount || 0 }}
+          </p>
+          <!-- Superset에서 직접 보기 버튼 -->
+          <a-button 
+            type="link" 
+            size="small" 
+            @click="openInSuperset"
+            style="margin-top: 8px;"
+          >
+            Superset에서 보기 →
+          </a-button>
         </div>
       </div>
     </div>
-
     <!-- 차트 설명 -->
     <template #extra v-if="chart.description">
       <a-tooltip :title="chart.description">
@@ -167,8 +154,9 @@ export default defineComponent({
     const lineChartRef = ref()
     const pieChartRef = ref()
 
-    const canEdit = computed(() => authService.canEditChart())
-    const canDelete = computed(() => authService.canDeleteChart())
+    // 🔥 차트 소유자 ID를 파라미터로 전달
+    const canEdit = computed(() => authService.canEditChart(props.chart.changed_by?.id))
+    const canDelete = computed(() => authService.canDeleteChart(props.chart.changed_by?.id))
 
     // 테이블 데이터 처리
     const tableColumns = computed(() => {
@@ -265,6 +253,44 @@ export default defineComponent({
       })
     })
 
+    // iframe으로 차트 임베드 URL 생성
+    const getChartEmbedUrl = () => {
+      // Superset 서버 URL
+      const supersetUrl = 'http://localhost:8088'
+      
+      // standalone 모드로 차트만 표시 (헤더/사이드바 제외)
+      const embedUrl = `${supersetUrl}/superset/explore/?standalone=3&slice_id=${props.chart.id}`
+      
+      console.log('차트 임베드 URL:', embedUrl)
+      return embedUrl
+    }
+
+    // iframe 로드 완료 핸들러
+    const handleIframeLoad = () => {
+      console.log('차트 iframe 로드 완료:', props.chart.id)
+    }
+
+    // 🔥 썸네일 URL 생성
+    const getChartThumbnailUrl = () => {
+      const supersetUrl = 'http://localhost:8088'
+      const thumbnailUrl = `${supersetUrl}${props.chart.thumbnail_url}`
+      console.log('차트 썸네일 URL:', thumbnailUrl)
+      return thumbnailUrl
+    }
+
+    // 🔥 이미지 로드 실패 핸들러
+    const handleImageError = (e) => {
+      console.error('썸네일 이미지 로드 실패:', props.chart.thumbnail_url)
+      e.target.style.display = 'none'
+    }
+
+    // 🔥 Superset에서 직접 열기
+    const openInSuperset = () => {
+      const supersetUrl = 'http://localhost:8088'
+      const chartUrl = `${supersetUrl}/superset/explore/?slice_id=${props.chart.id}`
+      window.open(chartUrl, '_blank')
+    }
+
     return {
       barChartRef,
       lineChartRef,
@@ -273,7 +299,12 @@ export default defineComponent({
       canDelete,
       tableColumns,
       tableData,
-      handleAction
+      handleAction,
+      getChartEmbedUrl,    // 🔥 추가
+      handleIframeLoad,     // 🔥 추가
+      getChartThumbnailUrl,  // 🔥 추가
+      handleImageError,      // 🔥 추가
+      openInSuperset         // 🔥 추가
     }
   }
 })

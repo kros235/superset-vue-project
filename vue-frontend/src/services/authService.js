@@ -143,6 +143,15 @@ class AuthService {
     return this.currentUser?.id === chartOwnerId || this.hasRole('Alpha')
   }
 
+  // 🔥 아래 메서드 추가
+  // 특정 차트 삭제 권한 체크
+  canDeleteChart(chartOwnerId) {
+    if (this.isAdmin()) {
+      return true
+    }
+    return this.currentUser?.id === chartOwnerId || this.hasRole('Alpha')
+  }
+
   // 특정 대시보드 편집 권한 체크
   canEditDashboard(dashboardOwnerId) {
     if (this.isAdmin()) {

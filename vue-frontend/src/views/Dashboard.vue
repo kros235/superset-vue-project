@@ -122,16 +122,24 @@
         </a-button>
       </a-empty>
 
-      <a-row v-else :gutter="[16, 16]">
+      <a-row v-if="displayedCharts.length > 0" :gutter="[16, 16]">
         <a-col
           v-for="chart in displayedCharts"
           :key="chart.id"
           :xs="24"
           :sm="12"
           :lg="userLayout.chartsPerRow === 1 ? 24 : 12"
-          :xl="userLayout.chartsPerRow === 1 ? 24 : 12"
         >
-          <ChartCard :chart="chart" @view="loadChartData" />
+          <!-- 🔥 ChartCard에 데이터 전달 -->
+          <chart-card
+            :chart="chart"
+            :chartData="chartDataMap[chart.id]"
+            :loading="chartLoadingMap[chart.id] || false"
+            @view="loadChartData"
+            @edit="handleEditChart"
+            @delete="handleDeleteChart"
+            @refresh="loadChartData"
+          />
         </a-col>
       </a-row>
 
@@ -207,6 +215,11 @@ export default defineComponent({
     const loading = ref(true)
     const error = ref('')
     const charts = ref([])
+
+    // 🔥 아래 두 줄 추가
+    const chartDataMap = ref({})      // 각 차트의 데이터 저장
+    const chartLoadingMap = ref({})   // 각 차트의 로딩 상태
+
     const dashboardStats = ref({
       totalCharts: 0,
       totalDashboards: 0,
@@ -267,6 +280,13 @@ export default defineComponent({
           }
 
           charts.value = filteredCharts
+
+          // 🔥🔥🔥 차트 데이터 자동 로드 🔥🔥🔥
+          // 모든 차트의 데이터를 자동으로 로드
+          filteredCharts.forEach(chart => {
+            loadChartData(chart.id)
+          })
+          // 🔥🔥🔥 자동 로드 끝 🔥🔥🔥
         }
       } catch (err) {
         console.error('Dashboard loading error:', err)
@@ -276,15 +296,56 @@ export default defineComponent({
       }
     }
 
+    const handleEditChart = (chart) => {
+      router.push(`/charts?edit=${chart.id}`)
+    }
+
+    const handleDeleteChart = async (chart) => {
+      // 삭제 확인 모달 표시
+      if (confirm(`"${chart.slice_name}" 차트를 삭제하시겠습니까?`)) {
+        try {
+          await supersetAPI.deleteChart(chart.id)
+          message.success('차트가 삭제되었습니다.')
+          loadDashboardData() // 대시보드 새로고침
+        } catch (error) {
+          console.error('차트 삭제 오류:', error)
+          message.error('차트 삭제 중 오류가 발생했습니다.')
+        }
+      }
+    }
+
+    // 🔥 차트 데이터 로딩 함수 - 완전히 새로운 버전
     const loadChartData = async (chartId) => {
       try {
-        // 실제 차트 데이터 로드 로직
-        console.log('Loading chart data for chart:', chartId)
-        message.info('차트 데이터를 로딩 중입니다...')
-        // 여기서 실제 차트 렌더링을 구현할 수 있습니다
-      } catch (err) {
-        console.error('Chart data loading error:', err)
-        message.error('차트 데이터 로딩 중 오류가 발생했습니다.')
+        console.log('차트 데이터 로딩 시작:', chartId)
+        chartLoadingMap.value[chartId] = true
+        
+        // supersetAPI의 getChartData 호출
+        const result = await supersetAPI.getChartData(chartId)
+        
+        console.log('차트 데이터 로딩 완료:', result)
+        
+        // 차트 데이터 저장
+        chartDataMap.value = {
+          ...chartDataMap.value,
+          [chartId]: result
+        }
+        
+        message.success('차트 데이터를 불러왔습니다.')
+      } catch (error) {
+        console.error('차트 데이터 로딩 오류:', error)
+        
+        let errorMessage = '차트 데이터를 불러오는 중 오류가 발생했습니다.'
+        
+        if (error.response?.data?.message) {
+          errorMessage = error.response.data.message
+        } else if (error.message) {
+          errorMessage = error.message
+        }
+        
+        message.error(errorMessage)
+      } finally {
+        chartLoadingMap.value[chartId] = false
       }
     }
 
@@ -296,6 +357,8 @@ export default defineComponent({
       loading,
       error,
       charts,
+      chartDataMap,           // 🔥 추가
+      chartLoadingMap,        // 🔥 추가
       dashboardStats,
       currentUser,
       isAdmin,
@@ -305,6 +368,8 @@ export default defineComponent({
       displayedCharts,
       Simple,
       loadDashboardData,
+      handleEditChart,   // 🔥 추가
+      handleDeleteChart, // 🔥 추가
       loadChartData,
       h
     }

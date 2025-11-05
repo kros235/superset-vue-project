@@ -841,16 +841,176 @@ class SupersetAPI {
   }
 
   // 🔥 차트 데이터 조회
-  async getChartData(chartId, formData = {}) {
+  // 🔥 차트 데이터 조회 - 올바른 버전
+  async getChartData(chartId) {
     try {
-      console.log(`차트 데이터 조회: ${chartId}`)
-      const response = await this.api.post(`/api/v1/chart/${chartId}/data/`, {
-        form_data: formData
-      })
-      console.log('차트 데이터:', response.data)
-      return response.data
+      console.log(`차트 데이터 조회 시작: ${chartId}`)
+      
+      // 1단계: 차트 정보 가져오기
+      const chartResponse = await this.api.get(`/api/v1/chart/${chartId}`)
+      console.log('차트 정보:', chartResponse.data)
+      
+      if (!chartResponse.data || !chartResponse.data.result) {
+        throw new Error('차트 정보를 가져올 수 없습니다')
+      }
+      
+      const chartInfo = chartResponse.data.result
+      // 🔥🔥🔥 여기에 디버깅 로그 추가 🔥🔥🔥
+      console.log('=== 차트 정보 상세 디버깅 ===')
+      console.log('datasource_id:', chartInfo.datasource_id)
+      console.log('datasource_type:', chartInfo.datasource_type)
+      console.log('datasource:', chartInfo.datasource)
+      console.log('params:', chartInfo.params)
+      console.log('전체 chartInfo:', JSON.stringify(chartInfo, null, 2))
+      console.log('===========================')
+      // 🔥🔥🔥 디버깅 로그 끝 🔥🔥🔥
+      
+      // 2단계: params 파싱
+      let formData = {}
+      if (chartInfo.params) {
+        if (typeof chartInfo.params === 'string') {
+          try {
+            formData = JSON.parse(chartInfo.params)
+          } catch (e) {
+            console.error('params 파싱 실패:', e)
+            formData = {}
+          }
+        } else {
+          formData = chartInfo.params
+        }
+      }
+      
+      console.log('파싱된 formData:', formData)
+
+      // 🔥🔥🔥 3단계: datasource 정보 추출 (다양한 형식 지원) 🔥🔥🔥
+      // 🔥 3단계: datasource 정보 추출 (query_context 우선 확인)
+      let datasourceId = null
+      let datasourceType = 'table'
+
+      // 🔥 방법 1: query_context에서 추출 (가장 확실한 방법)
+      if (chartInfo.query_context) {
+        try {
+          const queryContext = typeof chartInfo.query_context === 'string' 
+            ? JSON.parse(chartInfo.query_context) 
+            : chartInfo.query_context
+          
+          if (queryContext.datasource) {
+            datasourceId = parseInt(queryContext.datasource.id)
+            datasourceType = queryContext.datasource.type || 'table'
+            console.log('✅ 방법 1: query_context에서 추출:', datasourceId, datasourceType)
+          } else if (queryContext.form_data && queryContext.form_data.datasource) {
+            // form_data.datasource는 "2__table" 형식
+            const parts = queryContext.form_data.datasource.split('__')
+            if (parts.length === 2) {
+              datasourceId = parseInt(parts[0])
+              datasourceType = parts[1]
+              console.log('✅ 방법 1-2: query_context.form_data.datasource 파싱:', datasourceId, datasourceType)
+            }
+          }
+        } catch (e) {
+          console.warn('query_context 파싱 실패:', e)
+        }
+      }
+
+      // 방법 2: chartInfo.datasource_id 직접 확인
+      if (!datasourceId && chartInfo.datasource_id) {
+        datasourceId = parseInt(chartInfo.datasource_id)
+        datasourceType = chartInfo.datasource_type || 'table'
+        console.log('✅ 방법 2: datasource_id 직접 추출:', datasourceId, datasourceType)
+      }
+
+      // 방법 3: chartInfo.datasource 객체에서 추출
+      if (!datasourceId && chartInfo.datasource && typeof chartInfo.datasource === 'object') {
+        datasourceId = parseInt(chartInfo.datasource.id)
+        datasourceType = chartInfo.datasource.type || 'table'
+        console.log('✅ 방법 3: datasource 객체에서 추출:', datasourceId, datasourceType)
+      }
+
+      // 방법 4: chartInfo.datasource 문자열 파싱 (예: "2__table")
+      if (!datasourceId && chartInfo.datasource && typeof chartInfo.datasource === 'string') {
+        const parts = chartInfo.datasource.split('__')
+        if (parts.length === 2) {
+          datasourceId = parseInt(parts[0])
+          datasourceType = parts[1]
+          console.log('✅ 방법 4: datasource 문자열 파싱:', datasourceId, datasourceType)
+        }
+      }
+
+      // 방법 5: params의 datasource 정보 추출
+      if (!datasourceId && formData.datasource) {
+        if (typeof formData.datasource === 'string') {
+          const parts = formData.datasource.split('__')
+          if (parts.length === 2) {
+            datasourceId = parseInt(parts[0])
+            datasourceType = parts[1]
+            console.log('✅ 방법 5: params.datasource 파싱:', datasourceId, datasourceType)
+          }
+        } else if (typeof formData.datasource === 'object') {
+          datasourceId = parseInt(formData.datasource.id)
+          datasourceType = formData.datasource.type || 'table'
+          console.log('✅ 방법 5: params.datasource 객체 추출:', datasourceId, datasourceType)
+        }
+      }
+
+      if (!datasourceId || isNaN(datasourceId)) {
+        console.error('❌ datasource_id를 찾을 수 없습니다!')
+        console.error('chartInfo:', chartInfo)
+        console.error('formData:', formData)
+        throw new Error('차트의 데이터소스 정보를 찾을 수 없습니다. 차트가 올바르게 생성되지 않았을 수 있습니다.')
+      }
+
+      console.log('🎯 최종 datasource:', { id: datasourceId, type: datasourceType })
+      
+      // 🔥🔥🔥 datasource 정보 추출 끝 🔥🔥🔥
+      
+      // 4단계: 차트 데이터 요청
+      const dataPayload = {
+        datasource: {
+          id: datasourceId,  // 🔥 추출한 ID 사용
+          type: datasourceType  // 🔥 추출한 타입 사용
+        },
+        queries: [{
+          columns: formData.groupby || [],
+          metrics: formData.metrics || [],
+          filters: formData.filters || [],
+          row_limit: parseInt(formData.row_limit) || 10000,  // 🔥 정수로 변환
+          orderby: formData.orderby || [],
+          annotation_layers: formData.annotation_layers || [],  // 🔥 추가
+          time_range: formData.time_range || null,             // 🔥 추가
+          granularity_sqla: formData.granularity_sqla || null  // 🔥 추가
+        }],
+        result_format: 'json',    // 🔥 추가
+        result_type: 'full'       // 🔥 추가
+      }
+      
+      console.log('데이터 요청 페이로드:', dataPayload)
+      
+      const dataResponse = await this.api.post('/api/v1/chart/data', dataPayload)
+      console.log('차트 데이터 응답:', dataResponse.data)
+      
+      if (!dataResponse.data || !dataResponse.data.result) {
+        throw new Error('차트 데이터를 가져올 수 없습니다')
+      }
+            
+      // 🔥 응답 데이터 구조 확인 및 정규화 
+      const result = dataResponse.data.result[0]
+
+      return {
+        chartInfo,
+        data: {
+          ...result,
+          // 데이터가 배열 형태로 있는지 확인
+          data: result.data || [],
+          rowcount: result.rowcount || (result.data ? result.data.length : 0)
+        }
+      }
     } catch (error) {
-      console.error('차트 데이터 조회 오류:', error)
+      console.error('Error fetching chart data:', error)
+      console.error('Error details:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status
+      })
       throw error
     }
   }
