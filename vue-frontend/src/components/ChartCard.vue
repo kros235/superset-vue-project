@@ -58,36 +58,49 @@
       </div>
       
       <!-- 데이터가 있는 경우 -->
-      <div v-else style="width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #fafafa;">
-        <!-- 🔥 Superset 차트 썸네일 이미지 -->
-        <div v-if="chart.thumbnail_url" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
+      <div v-else style="width: 100%; height: 100%;">
+        <!-- 🔥 우선순위 1: 썸네일 이미지 (Blob URL) -->
+        <div v-if="thumbnailBlobUrl && !useFallbackThumbnail" 
+             style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #fafafa;">
           <img 
-            :src="getChartThumbnailUrl()"
+            :src="thumbnailBlobUrl"
             :alt="chart.slice_name"
             style="max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px;"
-            @error="handleImageError"
           />
         </div>
-        
-        <!-- 썸네일 없거나 로드 실패 시 -->
-        <div v-else style="text-align: center; color: #999;">
-          <BarChartOutlined style="font-size: 48px; color: #1890ff; margin-bottom: 16px;" />
-          <p>{{ chart.viz_type }} 차트</p>
-          <p style="font-size: 12px;">
-            데이터 행 수: {{ chartData.data?.rowcount || 0 }}
-          </p>
-          <!-- Superset에서 직접 보기 버튼 -->
-          <a-button 
-            type="link" 
-            size="small" 
-            @click="openInSuperset"
-            style="margin-top: 8px;"
-          >
-            Superset에서 보기 →
-          </a-button>
+
+        <!-- 🔥 우선순위 2: iframe 미리보기 (썸네일 실패 시) -->
+        <div v-else-if="useIframePreview" 
+             style="width: 100%; height: 100%; position: relative;">
+          <iframe 
+            :src="getChartEmbedUrl()"
+            style="width: 100%; height: 100%; border: none; border-radius: 4px;"
+            @load="handleIframeLoad"
+            sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+          />
+        </div>
+
+        <!-- 🔥 우선순위 3: 대체 UI (모든 방법 실패 시) -->
+        <div v-else style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #fafafa;">
+          <div style="text-align: center; padding: 20px;">
+            <BarChartOutlined style="font-size: 48px; color: #1890ff; margin-bottom: 12px;" />
+            <p style="margin: 0; font-size: 14px; color: #666;">{{ chart.viz_type }} 차트</p>
+            <p style="margin: 8px 0; font-size: 12px; color: #999;">
+              데이터셋: {{ chart.datasource_name || 'N/A' }}
+            </p>
+            <a-button 
+              type="link" 
+              size="small" 
+              @click="openInSuperset"
+              style="margin-top: 8px;"
+            >
+              Superset에서 열기 <RightOutlined />
+            </a-button>
+          </div>
         </div>
       </div>
     </div>
+
     <!-- 차트 설명 -->
     <template #extra v-if="chart.description">
       <a-tooltip :title="chart.description">
@@ -108,10 +121,12 @@ import {
   ExclamationCircleOutlined,
   InboxOutlined,
   BarChartOutlined,
-  InfoCircleOutlined
+  InfoCircleOutlined,
+  RightOutlined
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import authService from '../services/authService'
+import axios from 'axios' // 🔥 추가
 
 export default defineComponent({
   name: 'ChartCard',
@@ -124,7 +139,8 @@ export default defineComponent({
     ExclamationCircleOutlined,
     InboxOutlined,
     BarChartOutlined,
-    InfoCircleOutlined
+    InfoCircleOutlined,
+    RightOutlined
   },
   props: {
     chart: {
@@ -154,6 +170,12 @@ export default defineComponent({
     const lineChartRef = ref()
     const pieChartRef = ref()
 
+    // 🔥 추가: 썸네일 대체 방법 - 차트 미리보기 직접 렌더링
+    const useFallbackThumbnail = ref(true) // 썸네일 실패 시 대체 UI 사용
+    const thumbnailBlobUrl = ref(null) // 🔥 추가: Blob URL 저장
+    const thumbnailLoading = ref(false) // 🔥 추가: 썸네일 로딩 상태
+    const useIframePreview = ref(false) // 🔥 추가: iframe 사용 여부
+    
     // 🔥 차트 소유자 ID를 파라미터로 전달
     const canEdit = computed(() => authService.canEditChart(props.chart.changed_by?.id))
     const canDelete = computed(() => authService.canDeleteChart(props.chart.changed_by?.id))
@@ -202,6 +224,47 @@ export default defineComponent({
       }
     }
 
+    // 🔥 썸네일 로드 (404면 iframe으로 대체)
+     const loadThumbnailWithAuth = async () => {
+      if (!props.chart.thumbnail_url) {
+        console.warn('썸네일 URL 없음 → iframe 사용')
+        useIframePreview.value = true
+        return
+      }
+
+      try {
+        thumbnailLoading.value = true
+        const supersetUrl = 'http://localhost:8088'
+        const thumbnailUrl = `${supersetUrl}${props.chart.thumbnail_url}`
+        
+        const token = localStorage.getItem('access_token')
+        const csrfToken = localStorage.getItem('csrf_token')
+        
+        console.log('🖼️ 썸네일 로드 시도:', thumbnailUrl)
+        
+        const response = await axios.get(thumbnailUrl, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'X-CSRFToken': csrfToken
+          },
+          responseType: 'blob'
+        })
+
+        const blob = new Blob([response.data], { type: response.headers['content-type'] || 'image/png' })
+        thumbnailBlobUrl.value = URL.createObjectURL(blob)
+        
+        console.log('✅ 썸네일 로드 성공:', props.chart.id)
+        useFallbackThumbnail.value = false
+        useIframePreview.value = false
+      } catch (error) {
+        console.error('❌ 썸네일 로드 실패 → iframe으로 대체:', props.chart.id, error)
+        useFallbackThumbnail.value = true
+        useIframePreview.value = true // 🔥 썸네일 실패 시 iframe 사용
+      } finally {
+        thumbnailLoading.value = false
+      }
+    }
+
     // 차트 렌더링 함수들
     const renderBarChart = () => {
       if (!barChartRef.value || !props.chartData) return
@@ -239,6 +302,9 @@ export default defineComponent({
     }, { deep: true })
 
     onMounted(() => {
+      // 🔥 썸네일 로드
+      loadThumbnailWithAuth()
+
       // 컴포넌트 마운트 시 차트 렌더링
       nextTick(() => {
         if (props.chartData) {
@@ -251,6 +317,19 @@ export default defineComponent({
           }
         }
       })
+    })
+
+    // 🔥 컴포넌트 언마운트 시 Blob URL 해제
+    const cleanupBlobUrl = () => {
+      if (thumbnailBlobUrl.value) {
+        URL.revokeObjectURL(thumbnailBlobUrl.value)
+        thumbnailBlobUrl.value = null
+      }
+    }
+
+    watch(() => props.chart.id, () => {
+      cleanupBlobUrl()
+      loadThumbnailWithAuth()
     })
 
     // iframe으로 차트 임베드 URL 생성
@@ -271,13 +350,25 @@ export default defineComponent({
     }
 
     // 🔥 썸네일 URL 생성
+    // === 수정된 코드 (인증 토큰 포함) ===
     const getChartThumbnailUrl = () => {
+      // 🔥 수정: Superset 썸네일은 인증이 필요하므로 직접 표시 불가능
+      // 대신 차트 ID로 임시 미리보기 이미지 생성
       const supersetUrl = 'http://localhost:8088'
+      const token = localStorage.getItem('access_token')
+      
+      if (!props.chart.thumbnail_url) {
+        return null
+      }
+      
+      // 🔥 옵션 1: 인증 토큰을 포함한 URL (브라우저에서 직접 접근 시 권한 문제 발생 가능)
       const thumbnailUrl = `${supersetUrl}${props.chart.thumbnail_url}`
       console.log('차트 썸네일 URL:', thumbnailUrl)
+      
       return thumbnailUrl
     }
 
+    
     // 🔥 이미지 로드 실패 핸들러
     const handleImageError = (e) => {
       console.error('썸네일 이미지 로드 실패:', props.chart.thumbnail_url)
@@ -304,8 +395,17 @@ export default defineComponent({
       handleIframeLoad,     // 🔥 추가
       getChartThumbnailUrl,  // 🔥 추가
       handleImageError,      // 🔥 추가
-      openInSuperset         // 🔥 추가
+      openInSuperset,         // 🔥 추가
+      useFallbackThumbnail,
+      thumbnailBlobUrl, // 🔥 추가
+      thumbnailLoading,  // 🔥 추가
+      cleanupBlobUrl,     // 🔥 추가
+      useIframePreview // 🔥 추가
     }
+  },
+  // 🔥 컴포넌트 언마운트 시 정리
+  beforeUnmount() {
+    this.cleanupBlobUrl()
   }
 })
 </script>

@@ -58,6 +58,15 @@ CACHE_CONFIG = {
     'CACHE_REDIS_URL': f'redis://{os.environ.get("REDIS_HOST", "redis")}:{os.environ.get("REDIS_PORT", 6379)}/1'
 }
 
+# 🔥 X-Frame-Options 해제 (iframe 허용)
+TALISMAN_ENABLED = True
+TALISMAN_CONFIG = {
+    "content_security_policy": None,
+    "force_https": False,
+    "frame_options": "ALLOWFROM",  # 또는 완전히 제거하려면 None
+    "frame_options_allow_from": "http://localhost:8080"
+}
+
 # CORS 설정 (기존과 동일)
 ENABLE_CORS = True
 CORS_OPTIONS = {

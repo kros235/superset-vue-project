@@ -492,6 +492,7 @@ export default defineComponent({
       }
     }
 
+    // === 수정된 코드 (query_context 추가) ===
     const saveChart = async () => {
       if (!canSaveChart.value) {
         message.error('필수 정보를 모두 입력해주세요.')
@@ -499,14 +500,54 @@ export default defineComponent({
       }
 
       try {
+        // 🔥 query_context 생성 - Superset이 차트를 제대로 저장하기 위해 필수
+        const queryContext = {
+          datasource: {
+            id: chartConfig.value.datasource_id,
+            type: 'table'
+          },
+          force: false,
+          queries: [{
+            filters: chartConfig.value.params?.adhoc_filters || [],
+            extras: {
+              having: '',
+              where: ''
+            },
+            applied_time_extras: {},
+            columns: chartConfig.value.params?.groupby || [],
+            metrics: chartConfig.value.params?.metrics || ['count'],
+            annotation_layers: [],
+            row_limit: chartConfig.value.params?.row_limit || 10000,
+            series_limit: 0,
+            order_desc: true,
+            url_params: {},
+            custom_params: {},
+            custom_form_data: {}
+          }],
+          form_data: {
+            ...chartConfig.value.params,
+            datasource: `${chartConfig.value.datasource_id}__table`,
+            viz_type: chartConfig.value.viz_type,
+            slice_id: null,
+            force: false,
+            result_format: 'json',
+            result_type: 'full'
+          },
+          result_format: 'json',
+          result_type: 'full'
+        }
+
         const payload = {
           slice_name: chartConfig.value.slice_name,
           description: chartConfig.value.description,
           datasource_id: chartConfig.value.datasource_id,
           datasource_type: 'table',
           viz_type: chartConfig.value.viz_type,
-          params: JSON.stringify(chartConfig.value.params)
+          params: JSON.stringify(chartConfig.value.params),
+          query_context: JSON.stringify(queryContext) // 🔥 추가: query_context
         }
+        
+        console.log('💾 차트 저장 payload:', payload)
         
         await supersetAPI.createChart(payload)
         message.success('차트가 성공적으로 생성되었습니다!')

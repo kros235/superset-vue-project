@@ -248,14 +248,21 @@ export default defineComponent({
 
       try {
         // 병렬로 데이터 로드
+        // === 수정된 코드 (에러 처리 강화) ===
         const promises = [
           supersetAPI.getCharts(),
           supersetAPI.getDashboards(),
           supersetAPI.getDatasets()
         ]
 
+        // 🔥 사용자 목록은 에러가 발생해도 대시보드 로딩을 방해하지 않도록 처리
         if (authService.canManageUsers()) {
-          promises.push(supersetAPI.getUsers())
+          promises.push(
+            supersetAPI.getUsers().catch(error => {
+              console.warn('사용자 목록 조회 실패 (무시 가능):', error)
+              return [] // 빈 배열 반환하여 대시보드는 정상 표시
+            })
+          )
         } else {
           promises.push(Promise.resolve([]))
         }

@@ -1169,14 +1169,21 @@ class SupersetAPI {
   // ===== 사용자 및 권한 관리 =====
 
   // 🔥 사용자 목록 조회
+  // === 수정된 코드 (복수형 문제 해결) ===
   async getUsers() {
     try {
       console.log('사용자 목록 조회 중...')
-      const response = await this.api.get('/api/v1/security/users/')
+      // 🔥 수정: /users/ → /user/ (Superset 버전에 따라 엔드포인트가 다를 수 있음)
+      const response = await this.api.get('/api/v1/security/user/')
       console.log('사용자 목록:', response.data.result)
-      return response.data.result
+      return response.data.result || []
     } catch (error) {
       console.error('사용자 목록 조회 오류:', error)
+      // 🔥 추가: 404 에러 시 빈 배열 반환 (관리자 권한 없을 수 있음)
+      if (error.response?.status === 404) {
+        console.warn('사용자 목록 API를 사용할 수 없습니다. 권한을 확인하세요.')
+        return []
+      }
       throw error
     }
   }
