@@ -50,7 +50,7 @@ SQLLAB_CTAS_NO_LIMIT = True
 # 메타데이터 캐시 설정
 CACHE_CONFIG = {
     'CACHE_TYPE': 'RedisCache',
-    'CACHE_DEFAULT_TIMEOUT': 300,
+    'CACHE_DEFAULT_TIMEOUT': 5,
     'CACHE_KEY_PREFIX': 'superset_',
     'CACHE_REDIS_HOST': os.environ.get('REDIS_HOST', 'redis'),
     'CACHE_REDIS_PORT': int(os.environ.get('REDIS_PORT', 6379)),
