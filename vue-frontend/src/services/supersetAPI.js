@@ -64,9 +64,14 @@ class SupersetAPI {
         console.error(`[API 응답 오류] ${error.response?.status || 'Network Error'} ${error.config?.url}:`)
         
         if (error.response) {
-          console.error('응답 상태:', error.response.status)
-          console.error('응답 헤더:', error.response.headers)
-          console.error('응답 데이터:', error.response.data)
+          console.log('[API 응답 오류]', error.response?.status, url)
+          console.log('응답 상태:', error.response?.status)
+          console.log('응답 헤더:', error.response?.headers)
+          console.log('응답 데이터:', error.response?.data)
+          
+          if (error.response?.data?.message) {
+            console.error('🚨 에러 메시지:', JSON.stringify(error.response.data.message, null, 2))
+          }
           
           // 🔥 401 오류 시 토큰 갱신 시도
           if (error.response.status === 401 && !originalRequest._retry) {
@@ -395,25 +400,37 @@ class SupersetAPI {
     }
   }
 
-  // 🔥 데이터셋 생성 - 완전한 버전
+  
   async createDataset(payload) {
+    console.log('데이터셋 생성 중...')
+    console.log('생성 페이로드:', payload)
+    
     try {
-      console.log('데이터셋 생성 중...')
-      console.log('생성 페이로드:', payload)
-      
-      // 기본 필수 필드 검증
-      const requiredFields = ['database', 'table_name']
-      for (const field of requiredFields) {
-        if (!payload[field]) {
-          throw new Error(`필수 필드가 누락되었습니다: ${field}`)
+      // 🔥 수정: axios 인스턴스를 직접 사용
+      const response = await axios.post(
+        `${this.baseURL}/api/v1/dataset/`,
+        {
+          database: payload.database,
+          schema: payload.schema,
+          table_name: payload.table_name,
+          owners: payload.owners || []
+        },
+        {
+          headers: this.getHeaders(),
+          withCredentials: true
         }
-      }
+      )
       
-      const response = await this.api.post('/api/v1/dataset/', payload)
       console.log('데이터셋 생성 성공:', response.data)
       return response.data
     } catch (error) {
       console.error('데이터셋 생성 오류:', error)
+      
+      // 🔥 추가: 상세 에러 정보 출력
+      if (error.response?.data?.message) {
+        console.error('🚨 에러 메시지:', JSON.stringify(error.response.data.message, null, 2))
+      }
+      
       throw error
     }
   }

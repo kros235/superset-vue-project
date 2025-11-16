@@ -497,6 +497,14 @@
       @close="handleDatasetEditClose"
       @saved="handleDatasetSaved"
     />
+
+    <!-- 🔥 데이터셋 생성 모달 (프리셋 포함) -->
+    <DatasetModal
+      :visible="showDatasetCreationModal"
+      :databases="databases"
+      @close="handleDatasetCreationClose"
+      @submit="handleDatasetCreation"
+    />
   </div>
 </template>
 
@@ -526,7 +534,7 @@ import authService from '../services/authService'
 // 컴포넌트
 import DatasetDetailModal from '../components/dataset/DatasetDetailModal.vue'
 import DatasetEditModal from '../components/dataset/DatasetEditModal.vue'
-
+import DatasetModal from '../components/DatasetModal.vue' 
 
 export default {
   name: 'DataSources',
@@ -543,7 +551,8 @@ export default {
     DeleteOutlined,
     DownOutlined,
     DatasetDetailModal,
-    DatasetEditModal
+    DatasetEditModal,
+    DatasetModal
   },
   setup() {
     // 기본 데이터
@@ -715,8 +724,33 @@ export default {
         return
       }
       
-      const firstDB = databases.value[0]
-      viewDatabaseTables(firstDB)
+      // 🔥 DatasetModal 열기
+      showDatasetCreationModal.value = true
+    }
+
+    // 🔥 데이터셋 생성 모달에서 제출 시 호출
+    const handleDatasetCreation = async (datasetData) => {
+      try {
+        console.log('데이터셋 생성 요청:', datasetData)
+        
+        const result = await supersetAPI.createDataset(datasetData)
+        console.log('데이터셋 생성 결과:', result)
+        
+        message.success('데이터셋이 성공적으로 생성되었습니다!')
+        showDatasetCreationModal.value = false
+        
+        // 데이터셋 목록 새로고침
+        await loadData()
+        
+      } catch (error) {
+        console.error('데이터셋 생성 오류:', error)
+        message.error('데이터셋 생성에 실패했습니다.')
+      }
+    }
+
+    // 🔥 데이터셋 생성 모달 닫기
+    const handleDatasetCreationClose = () => {
+      showDatasetCreationModal.value = false
     }
 
     const handleDatabaseSubmit = async () => {
@@ -1238,6 +1272,9 @@ const createDatasetFromTable = async (database, table) => {
     const showDatasetEditModal = ref(false)
     const selectedDatasetForEdit = ref(null)
 
+    // 🔥 데이터셋 생성 모달 상태 (프리셋 포함)
+    const showDatasetCreationModal = ref(false)
+
     // 데이터셋 상세 보기 (구현됨)
     const viewDataset = (dataset) => {
       console.log('View dataset:', dataset)
@@ -1427,6 +1464,10 @@ const createDatasetFromTable = async (database, table) => {
       selectedDatasetForDetail,
       showDatasetEditModal,
       selectedDatasetForEdit,
+
+      showDatasetCreationModal,
+      handleDatasetCreation,
+      handleDatasetCreationClose,
       
       // computed
       availableSchemas,

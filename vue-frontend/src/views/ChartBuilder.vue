@@ -66,7 +66,9 @@
         <div v-show="currentStep === 1 && selectedDataset">
           <ChartTypeSelection
             :selectedType="chartConfig.viz_type"
+            :selectedDataset="selectedDataset"
             @select="handleChartTypeChange"
+            @preset-selected="handlePresetSelected"
             @next="goToNextStep"
             @back="goToPrevStep"
           />
@@ -565,6 +567,34 @@ export default defineComponent({
       }
     })
 
+     // 🔥 프리셋 핸들러 추가 
+    const handlePresetSelected = (preset) => {
+      if (!preset) {
+        console.log('프리셋 선택 해제')
+        return
+      }
+
+      console.log('✨ 프리셋 선택됨:', preset)
+      
+      if (preset.configuration) {
+        const config = preset.configuration
+        
+        chartConfig.value.viz_type = preset.chart_type
+        chartConfig.value.params = {
+          ...chartConfig.value.params,
+          metrics: config.metrics || ['count'],
+          groupby: config.groupby || [],
+          row_limit: config.row_limit || 1000,
+          color_scheme: config.color_scheme || 'bnbColors',
+          ...config
+        }
+        
+        console.log('✅ 프리셋 설정 적용:', chartConfig.value)
+        message.success(`"${preset.preset_name}" 프리셋이 적용되었습니다!`)
+      }
+    }
+
+
     return {
       h,
       currentStep,
@@ -590,7 +620,8 @@ export default defineComponent({
       handleChartTypeChange,
       updateChartConfig,
       previewChart,
-      saveChart
+      saveChart,
+      handlePresetSelected 
     }
   }
 })
