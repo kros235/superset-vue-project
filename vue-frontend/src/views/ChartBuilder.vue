@@ -65,12 +65,12 @@
         <!-- 2단계: 차트 타입 선택 -->
         <div v-show="currentStep === 1 && selectedDataset">
           <ChartTypeSelection
-            :selectedType="chartConfig.viz_type"
+            :chartTypes="chartTypes"
+            :selectedChartType="chartConfig.viz_type"
             :selectedDataset="selectedDataset"
-            @select="handleChartTypeChange"
+            :loading="loading"
+            @change="handleChartTypeChange"
             @preset-selected="handlePresetSelected"
-            @next="goToNextStep"
-            @back="goToPrevStep"
           />
         </div>
 
@@ -214,6 +214,15 @@ export default defineComponent({
     const chartData = ref(null)
     const previewLoading = ref(false)
     const showDebugInfo = ref(process.env.NODE_ENV === 'development') // 🔥 개발 환경에서만 표시
+
+    const chartTypes = ref([
+      { key: 'table', name: '테이블', category: '기본' },
+      { key: 'dist_bar', name: '막대 차트', category: '비교' },
+      { key: 'line', name: '선 차트', category: '추세' },
+      { key: 'pie', name: '파이 차트', category: '비율' },
+      { key: 'area', name: '영역 차트', category: '추세' },
+      { key: 'scatter', name: '산점도', category: '분포' }
+    ])
 
     const chartConfig = ref({
       datasource_id: null,
@@ -607,6 +616,7 @@ export default defineComponent({
       chartData,
       previewLoading,
       chartConfig,
+      chartTypes, 
       steps,
       canCreateChart,
       canGoNext,

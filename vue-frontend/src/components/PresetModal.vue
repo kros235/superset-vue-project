@@ -154,6 +154,7 @@ import { ref, computed, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { PlusOutlined } from '@ant-design/icons-vue'
 import supersetAPI from '@/services/supersetAPI'
+import presetAPI from '@/services/presetAPI'
 
 export default {
   name: 'PresetModal',
@@ -266,51 +267,42 @@ export default {
 
       submitting.value = true
       try {
-        console.log('프리셋 생성 시작...')
+        console.log('✨ 프리셋 DB 저장 시작...')
 
         for (const preset of presets.value) {
           const metrics = preset.metricsArray || ['count']
           const groupby = preset.groupbyArray || []
 
-          const chartPayload = {
-            slice_name: preset.preset_name,
-            description: preset.preset_description || '',
-            viz_type: preset.chart_type,
-            datasource_id: props.datasetId,
-            datasource_type: 'table',
-            params: JSON.stringify({
-              datasource: `${props.datasetId}__table`,
-              viz_type: preset.chart_type,
+          // ✅ 프리셋 데이터 구조
+          const presetData = {
+            dataset_id: props.datasetId,
+            preset_name: preset.preset_name,
+            preset_description: preset.preset_description || '',
+            chart_type: preset.chart_type,
+            created_by: 'admin', // 현재 사용자로 변경 가능
+            configuration: {
               metrics: metrics,
               groupby: groupby,
+              row_limit: 10000,
               adhoc_filters: [],
-              row_limit: 10000
-            }),
-            query_context: JSON.stringify({
-              datasource: {
-                id: props.datasetId,
-                type: 'table'
-              },
-              queries: [{
-                columns: groupby,
-                metrics: metrics,
-                filters: [],
-                row_limit: 10000
-              }]
-            })
+              color_scheme: 'bnbColors'
+            }
           }
 
-          console.log('차트 생성 페이로드:', chartPayload)
-          await supersetAPI.createChart(chartPayload)
-          console.log(`✅ 프리셋 "${preset.preset_name}" 생성 완료`)
+          console.log('💾 프리셋 저장:', presetData)
+          
+          // ✅ presetAPI를 통해 DB에 저장 (차트 생성 X)
+          await presetAPI.createPreset(presetData)
+          
+          console.log(`✅ 프리셋 "${preset.preset_name}" DB 저장 완료`)
         }
 
-        message.success('프리셋 차트가 생성되었습니다')
+        message.success(`${presets.value.length}개의 프리셋이 저장되었습니다`)
         emit('success')
 
       } catch (error) {
-        console.error('프리셋 생성 오류:', error)
-        message.error('프리셋 생성에 실패했습니다')
+        console.error('❌ 프리셋 저장 오류:', error)
+        message.error('프리셋 저장에 실패했습니다')
       } finally {
         submitting.value = false
       }

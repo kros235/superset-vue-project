@@ -406,18 +406,14 @@ class SupersetAPI {
     console.log('생성 페이로드:', payload)
     
     try {
-      // 🔥 수정: axios 인스턴스를 직접 사용
-      const response = await axios.post(
-        `${this.baseURL}/api/v1/dataset/`,
+      // 🔥 수정: this.api 인스턴스 사용 (기존의 axios 직접 사용 방식 제거)
+      const response = await this.api.post(
+        '/api/v1/dataset/',
         {
           database: payload.database,
           schema: payload.schema,
           table_name: payload.table_name,
           owners: payload.owners || []
-        },
-        {
-          headers: this.getHeaders(),
-          withCredentials: true
         }
       )
       

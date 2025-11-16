@@ -108,18 +108,44 @@
       </a-row>
     </a-spin>
 
-    <!-- 🔥 선택된 프리셋 정보 표시 (새로 추가됨) -->
+    <!-- 🔥 선택된 프리셋 정보 표시 -->
     <div v-if="selectedPreset" style="margin-top: 24px">
       <a-divider />
       <a-alert
-        message="프리셋이 선택되었습니다"
-        :description="`'${selectedPreset.preset_name}' 프리셋의 설정이 자동으로 적용됩니다.`"
-        type="info"
+        message="✨ 프리셋이 선택되었습니다"
+        type="success"
         show-icon
-        closable
-        @close="clearPreset"
-      />
+        style="margin-bottom: 16px"
+      >
+        <template #description>
+          <div style="margin-bottom: 12px">
+            <strong>'{{ selectedPreset.preset_name }}'</strong> 프리셋의 설정이 자동으로 적용됩니다.
+          </div>
+          <div style="background: #f6ffed; padding: 12px; border-radius: 4px; border: 1px solid #b7eb8f">
+            <div v-if="selectedPreset.configuration?.metrics?.length" style="margin-bottom: 4px">
+              <strong>📊 메트릭:</strong> {{ selectedPreset.configuration.metrics.join(', ') }}
+            </div>
+            <div v-if="selectedPreset.configuration?.groupby?.length">
+              <strong>📂 그룹핑:</strong> {{ selectedPreset.configuration.groupby.join(', ') }}
+            </div>
+          </div>
+        </template>
+      </a-alert>
+
+      <div style="display: flex; justify-content: space-between; align-items: center">
+        <a-button @click="clearPreset" danger>
+          프리셋 선택 해제
+        </a-button>
+        
+        <a-button type="primary" size="large" @click="proceedWithPreset">
+          <template #icon>
+            <ThunderboltOutlined />
+          </template>
+          이 프리셋으로 차트 만들기
+        </a-button>
+      </div>
     </div>
+    <!-- ✅✅✅ 수정 끝 ✅✅✅ -->
   </a-card>
 </template>
 
@@ -130,7 +156,7 @@ import {
   ThunderboltOutlined,
   FireOutlined
 } from '@ant-design/icons-vue'
-import presetAPI from '@/services/presetAPI' // 🔥 추가
+import presetAPI from '@/services/presetAPI'
 
 export default defineComponent({
   name: 'ChartTypeSelection',
@@ -157,7 +183,7 @@ export default defineComponent({
       default: false
     }
   },
-  emits: ['change', 'preset-selected'], // 🔥 'preset-selected' 추가
+  emits: ['change', 'preset-selected', 'proceed-with-preset'], // 🔥 'preset-selected' 추가
   setup(props, { emit }) {
     // 🔥 프리셋 관련 state 추가
     const recommendedPresets = ref([])
@@ -242,13 +268,23 @@ export default defineComponent({
       }
     }
 
-    // 🔥 프리셋 선택 해제 (새로 추가됨)
+    // 🔥 프리셋 선택 해제
     const clearPreset = () => {
       selectedPreset.value = null
       emit('preset-selected', null)
     }
 
-    // 🔥 데이터셋 변경 시 프리셋 다시 로드 (새로 추가됨)
+    // ✅✅✅ 프리셋으로 진행 ✅✅✅
+    const proceedWithPreset = () => {
+      if (selectedPreset.value) {
+        console.log('✨ 프리셋으로 차트 생성 진행:', selectedPreset.value.preset_name)
+        // 부모 컴포넌트에 프리셋이 선택되었음을 알리고 다음 단계로 진행
+        emit('preset-selected', selectedPreset.value)
+        emit('proceed-with-preset') // 새로운 이벤트 추가
+      }
+    }
+
+    // 🔥 데이터셋 변경 시 프리셋 다시 로드
     watch(() => props.selectedDataset, (newDataset) => {
       if (newDataset) {
         loadPresets()
@@ -262,14 +298,15 @@ export default defineComponent({
     })
 
     return {
-      recommendedPresets, // 🔥 추가
-      selectedPreset, // 🔥 추가
+      recommendedPresets, 
+      selectedPreset,
       getChartIcon,
       getChartTypeName,
       getChartTypeColor,
       selectChartType,
-      selectPreset, // 🔥 추가
-      clearPreset // 🔥 추가
+      selectPreset,
+      clearPreset,
+      proceedWithPreset
     }
   }
 })
@@ -282,7 +319,7 @@ export default defineComponent({
   transform: translateY(-2px);
 }
 
-/* 🔥 프리셋 선택 스타일 (새로 추가됨) */
+/* 🔥 프리셋 선택 스타일 */
 .selected-preset {
   border: 2px solid #faad14 !important;
   box-shadow: 0 0 0 2px rgba(250, 173, 20, 0.2);
