@@ -141,7 +141,8 @@
           <template #icon>
             <ThunderboltOutlined />
           </template>
-          이 프리셋으로 차트 만들기
+          <!-- 🔥 수정: 버튼 텍스트 변경 -->
+          프리셋 적용하고 저장 단계로 이동
         </a-button>
       </div>
     </div>
@@ -151,6 +152,7 @@
 
 <script>
 import { defineComponent, ref, watch, onMounted } from 'vue'
+import { message } from 'ant-design-vue'
 import {
   CheckOutlined,
   ThunderboltOutlined,
@@ -213,7 +215,7 @@ export default defineComponent({
         table: '📊',
         bar: '📊',
         line: '📈',
-        pie: '🥧',
+        pie: '🔵',
         area: '📉',
         scatter: '⚫',
         dist_bar: '📊'
@@ -258,9 +260,6 @@ export default defineComponent({
       console.log('프리셋 선택:', preset)
       selectedPreset.value = preset
       
-      emit('change', preset.chart_type)
-      emit('preset-selected', preset) // 🔥 부모에게 프리셋 정보 전달
-      
       try {
         await presetAPI.incrementPresetUsage(preset.id)
       } catch (error) {
@@ -278,9 +277,13 @@ export default defineComponent({
     const proceedWithPreset = () => {
       if (selectedPreset.value) {
         console.log('✨ 프리셋으로 차트 생성 진행:', selectedPreset.value.preset_name)
-        // 부모 컴포넌트에 프리셋이 선택되었음을 알리고 다음 단계로 진행
+        
+        // 차트 타입 변경
+        emit('change', selectedPreset.value.chart_type)
+
+        // 부모 컴포넌트에 프리셋 전달 및 자동 진행
         emit('preset-selected', selectedPreset.value)
-        emit('proceed-with-preset') // 새로운 이벤트 추가
+                
       }
     }
 

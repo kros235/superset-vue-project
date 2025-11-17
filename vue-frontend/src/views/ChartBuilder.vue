@@ -170,7 +170,7 @@
 </template>
 
 <script>
-import { defineComponent, ref, computed, onMounted, h } from 'vue'
+import { defineComponent, ref, computed, onMounted, h, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { 
   ReloadOutlined, 
@@ -401,10 +401,16 @@ export default defineComponent({
 
     const updateChartConfig = (updates) => {
       if (typeof updates === 'object') {
-        Object.assign(chartConfig.value, updates)
         if (updates.params) {
-          chartConfig.value.params = { ...chartConfig.value.params, ...updates.params }
+          chartConfig.value.params = {
+            ...chartConfig.value.params,
+            ...updates.params
+          }
+          delete updates.params // params는 이미 처리했으므로 제거
         }
+        
+        // 나머지 필드 병합
+        Object.assign(chartConfig.value, updates)
       }
       console.log('차트 설정 업데이트:', chartConfig.value)
     }
@@ -415,7 +421,9 @@ export default defineComponent({
         return
       }
 
-      if (!chartConfig.value.params?.metrics?.length) {
+      // metrics 검증 개선
+      if (!chartConfig.value.params?.metrics || chartConfig.value.params.metrics.length === 0) {
+        console.error('❌ metrics가 없습니다:', chartConfig.value.params)
         message.warning('최소 하나의 메트릭을 선택해주세요.')
         return
       }
@@ -511,6 +519,36 @@ export default defineComponent({
       }
 
       try {
+
+        // 저장 전 최종 검증
+        console.log('💾 차트 저장 시작')
+        console.log('📊 저장할 chartConfig:', chartConfig.value)
+        console.log('📊 저장할 params:', chartConfig.value.params)
+        console.log('📊 저장할 metrics:', chartConfig.value.params?.metrics)
+        console.log('📊 저장할 groupby:', chartConfig.value.params?.groupby)
+
+        // 파이 차트는 metric (단수형) 사용
+        const isPieChart = chartConfig.value.viz_type === 'pie'
+        const metricsArray = chartConfig.value.params?.metrics || ['count']
+
+        // params 객체를 명시적으로 복사하여 직렬화
+        const paramsToSave = {
+          datasource: `${chartConfig.value.datasource_id}__table`,
+          viz_type: chartConfig.value.viz_type,
+          // 파이 차트는 metric (단수), 다른 차트는 metrics (복수)
+          ...(isPieChart 
+            ? { metric: metricsArray[0] }  // 파이 차트: 첫 번째 메트릭만 사용
+            : { metrics: metricsArray }    // 다른 차트: 배열 사용
+          ),
+          groupby: chartConfig.value.params?.groupby || [],         // ✅ 명시적 설정
+          row_limit: chartConfig.value.params?.row_limit || 10000,
+          color_scheme: chartConfig.value.params?.color_scheme || 'bnbColors',
+          adhoc_filters: chartConfig.value.params?.adhoc_filters || [],
+          ...chartConfig.value.params  // ✅ 나머지 params 병합
+        }
+        
+        console.log('📦 직렬화할 params:', paramsToSave)
+        
         // 🔥 query_context 생성 - Superset이 차트를 제대로 저장하기 위해 필수
         const queryContext = {
           datasource: {
@@ -526,7 +564,7 @@ export default defineComponent({
             },
             applied_time_extras: {},
             columns: chartConfig.value.params?.groupby || [],
-            metrics: chartConfig.value.params?.metrics || ['count'],
+            metrics: metricsArray,  
             annotation_layers: [],
             row_limit: chartConfig.value.params?.row_limit || 10000,
             series_limit: 0,
@@ -536,9 +574,7 @@ export default defineComponent({
             custom_form_data: {}
           }],
           form_data: {
-            ...chartConfig.value.params,
-            datasource: `${chartConfig.value.datasource_id}__table`,
-            viz_type: chartConfig.value.viz_type,
+            ...paramsToSave,  
             slice_id: null,
             force: false,
             result_format: 'json',
@@ -554,7 +590,7 @@ export default defineComponent({
           datasource_id: chartConfig.value.datasource_id,
           datasource_type: 'table',
           viz_type: chartConfig.value.viz_type,
-          params: JSON.stringify(chartConfig.value.params),
+          params: JSON.stringify(paramsToSave), // 개선된 params 사용
           query_context: JSON.stringify(queryContext) // 🔥 추가: query_context
         }
         
@@ -577,7 +613,7 @@ export default defineComponent({
     })
 
      // 🔥 프리셋 핸들러 추가 
-    const handlePresetSelected = (preset) => {
+    const handlePresetSelected = async (preset) => { 
       if (!preset) {
         console.log('프리셋 선택 해제')
         return
@@ -588,18 +624,62 @@ export default defineComponent({
       if (preset.configuration) {
         const config = preset.configuration
         
+        // 차트 타입 설정
         chartConfig.value.viz_type = preset.chart_type
-        chartConfig.value.params = {
-          ...chartConfig.value.params,
-          metrics: config.metrics || ['count'],
-          groupby: config.groupby || [],
-          row_limit: config.row_limit || 1000,
-          color_scheme: config.color_scheme || 'bnbColors',
-          ...config
-        }
         
+        // 4단계 정보 자동 입력 (차트 제목, 설명)
+        chartConfig.value.slice_name = preset.preset_name
+        chartConfig.value.description = preset.preset_description || `${preset.preset_name} 프리셋으로 생성된 차트`
+        
+        const metrics = config.metrics && config.metrics.length > 0 
+              ? config.metrics 
+              : ['count']  // 기본값: COUNT(*)
+            
+        const groupby = config.groupby && config.groupby.length > 0
+          ? config.groupby
+          : []
+
+        // 차트 설정 적용 Object.assign으로 직접 할당 (반응성 유지)
+        Object.assign(chartConfig.value, {
+          viz_type: preset.chart_type,
+          slice_name: preset.preset_name,
+          description: preset.preset_description || `${preset.preset_name} 프리셋으로 생성된 차트`,
+          params: {
+            metrics: metrics,
+            groupby: groupby,
+            row_limit: config.row_limit || 1000,
+            color_scheme: config.color_scheme || 'bnbColors',
+            adhoc_filters: config.adhoc_filters || [],
+            ...config
+          }
+        })
+            
         console.log('✅ 프리셋 설정 적용:', chartConfig.value)
-        message.success(`"${preset.preset_name}" 프리셋이 적용되었습니다!`)
+        console.log('📊 적용된 params:', chartConfig.value.params)
+        console.log('📊 적용된 params.metrics:', chartConfig.value.params.metrics)
+        console.log('📂 적용된 params.groupby:', chartConfig.value.params.groupby)
+        
+
+        // 5단계(저장)로 자동 이동
+        currentStep.value = 4
+        
+        message.success({
+          content: `"${preset.preset_name}" 프리셋이 적용되었습니다! 차트를 미리보고 저장할 수 있습니다.`,
+          duration: 3
+        })
+        
+        // ✅ nextTick으로 DOM 업데이트 완료 후 미리보기 실행
+        await nextTick()
+        
+        // 미리보기 전 최종 검증 로그
+        console.log('🔍 미리보기 직전 chartConfig 전체:', chartConfig.value)
+        console.log('🔍 미리보기 직전 params:', chartConfig.value.params)
+        console.log('🔍 미리보기 직전 params.metrics:', chartConfig.value.params?.metrics)
+        console.log('🔍 미리보기 직전 params.groupby:', chartConfig.value.params?.groupby)
+    
+        
+        // setTimeout 대신 즉시 실행
+        previewChart()
       }
     }
 

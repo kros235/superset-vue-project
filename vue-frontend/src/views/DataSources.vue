@@ -118,29 +118,22 @@
                     </template>
                     편집
                   </a-button>
-                  <a-dropdown>
-                    <template #overlay>
-                      <a-menu class="dataset-action-menu">
-                        <a-menu-item @click="createChartFromDataset(record)">
-                          <BarChartOutlined />
-                          Vue.js에서 차트 생성
-                        </a-menu-item>
-                        <a-menu-item @click="openSupersetExplore(record)">
-                          <LinkOutlined />
-                          Superset에서 차트 생성
-                        </a-menu-item>
-                        <a-menu-divider />
-                        <a-menu-item @click="deleteDataset(record)" danger>
-                          <DeleteOutlined />
-                          삭제
-                        </a-menu-item>
-                      </a-menu>
+                  <a-button size="small" @click="createChartFromDataset(record)">
+                    <template #icon>
+                      <BarChartOutlined />
                     </template>
-                    <a-button size="small">
-                      차트 생성
-                      <DownOutlined />
-                    </a-button>
-                  </a-dropdown>
+                    차트 생성
+                  </a-button>
+                  <a-button 
+                    size="small" 
+                    danger 
+                    @click="deleteDataset(record)"
+                  >
+                    <template #icon>
+                      <DeleteOutlined />
+                    </template>
+                    삭제
+                  </a-button>
                 </a-space>
               </template>
             </template>
@@ -1345,34 +1338,36 @@ const createDatasetFromTable = async (database, table) => {
     // 데이터셋 삭제 (추가 기능)
     const deleteDataset = async (dataset) => {
       try {
-        await new Promise((resolve) => {
-          Modal.confirm({
-            title: '데이터셋 삭제',
-            content: `'${dataset.table_name}' 데이터셋을 정말 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`,
-            okText: '삭제',
-            okType: 'danger',
-            cancelText: '취소',
-            onOk: resolve,
-            onCancel: () => {
-              throw new Error('사용자 취소')
+        Modal.confirm({
+          title: '데이터셋 삭제',
+          content: `'${dataset.table_name}' 데이터셋을 정말 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`,
+          okText: '삭제',
+          okType: 'danger',
+          cancelText: '취소',
+          onOk: async () => {
+            try {
+              console.log('데이터셋 삭제:', dataset.id)
+              await supersetAPI.deleteDataset(dataset.id)
+              
+              message.success('데이터셋이 삭제되었습니다.')
+              
+              const index = datasets.value.findIndex(d => d.id === dataset.id)
+              if (index !== -1) {
+                datasets.value.splice(index, 1)
+              }
+              
+            } catch (error) {
+              console.error('데이터셋 삭제 오류:', error)
+              message.error('데이터셋 삭제에 실패했습니다.')
             }
-          })
+          },
+          onCancel: () => {
+            console.log('데이터셋 삭제 취소')
+          }
         })
-
-        await supersetAPI.deleteDataset(dataset.id)
-        message.success('데이터셋이 삭제되었습니다.')
-        
-        // 로컬 목록에서 제거
-        const index = datasets.value.findIndex(d => d.id === dataset.id)
-        if (index !== -1) {
-          datasets.value.splice(index, 1)
-        }
         
       } catch (error) {
-        if (error.message !== '사용자 취소') {
-          console.error('데이터셋 삭제 오류:', error)
-          message.error('데이터셋 삭제에 실패했습니다.')
-        }
+        console.error('예상치 못한 오류:', error)
       }
     }
 
