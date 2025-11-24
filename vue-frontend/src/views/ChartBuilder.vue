@@ -11,6 +11,27 @@
             Apache Superset을 사용하여 차트를 생성하고 관리합니다.
           </p>
         </div>
+        <a-space>
+          <!-- 🆕 AI 챗봇 버튼 추가 -->
+          <a-button 
+            v-if="selectedDataset"
+            type="primary"
+            ghost
+            @click="showChatbot = true"
+          >
+            <template #icon>
+              <CommentOutlined />
+            </template>
+            AI 차트 생성
+          </a-button>
+          
+          <a-button @click="resetForm">
+            <template #icon>
+              <ReloadOutlined />
+            </template>
+            새로 시작
+          </a-button>
+        </a-space>
         <a-button @click="resetForm">
           <template #icon>
             <ReloadOutlined />
@@ -176,7 +197,8 @@ import {
   ReloadOutlined, 
   LeftOutlined, 
   RightOutlined, 
-  SaveOutlined 
+  SaveOutlined,
+  CommentOutlined
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import authService from '../services/authService'
@@ -186,6 +208,7 @@ import ChartTypeSelection from '../components/chart-builder/ChartTypeSelection.v
 import ChartConfiguration from '../components/chart-builder/ChartConfiguration.vue'
 import ChartDetails from '../components/chart-builder/ChartDetails.vue'
 import ChartPreview from '../components/chart-builder/ChartPreview.vue'
+import ChartChatbot from '../components/ChartChatbot.vue' 
 
 export default defineComponent({
   name: 'ChartBuilderView',
@@ -194,11 +217,13 @@ export default defineComponent({
     LeftOutlined,
     RightOutlined,
     SaveOutlined,
+    CommentOutlined,
     DatasetSelection,
     ChartTypeSelection,
     ChartConfiguration,
     ChartDetails,
-    ChartPreview
+    ChartPreview,
+    ChartChatbot
   },
   setup() {
     const router = useRouter()
@@ -214,6 +239,8 @@ export default defineComponent({
     const chartData = ref(null)
     const previewLoading = ref(false)
     const showDebugInfo = ref(process.env.NODE_ENV === 'development') // 🔥 개발 환경에서만 표시
+
+    const showChatbot = ref(false)
 
     const chartTypes = ref([
       { key: 'table', name: '테이블', category: '기본' },
@@ -683,6 +710,56 @@ export default defineComponent({
       }
     }
 
+    const handleChatbotGenerated = async (chatbotConfig) => {
+      console.log('🤖 챗봇에서 생성된 차트 설정:', chatbotConfig)
+      
+      try {
+        // 1️⃣ 차트 타입 설정
+        chartConfig.value.viz_type = chatbotConfig.chart_type
+        
+        // 2️⃣ 파라미터 설정
+        chartConfig.value.params = {
+          metrics: chatbotConfig.metrics || ['count'],
+          groupby: chatbotConfig.groupby || [],
+          adhoc_filters: chatbotConfig.filters || [],
+          row_limit: chatbotConfig.row_limit || 1000,
+          time_range: chatbotConfig.time_range || 'No filter',
+          color_scheme: 'bnbColors'
+        }
+        
+        // 3️⃣ 차트 이름 자동 생성
+        const chartTypeName = {
+          bar: '막대 차트',
+          line: '선 차트',
+          pie: '파이 차트',
+          table: '테이블',
+          area: '영역 차트',
+          scatter: '산점도'
+        }[chatbotConfig.chart_type] || '차트'
+        
+        chartConfig.value.slice_name = `AI 생성 ${chartTypeName} - ${new Date().toLocaleString()}`
+        chartConfig.value.description = 'AI 챗봇으로 생성된 차트입니다.'
+        
+        console.log('✅ 챗봇 설정 적용 완료:', chartConfig.value)
+        
+        // 4️⃣ 4단계(정보 입력)로 이동
+        currentStep.value = 3
+        
+        // 5️⃣ 챗봇 모달 닫기
+        showChatbot.value = false
+        
+        message.success({
+          content: 'AI가 생성한 차트 설정이 적용되었습니다! 차트 이름을 수정한 후 미리보기를 확인하세요.',
+          duration: 5
+        })
+        
+        await nextTick()
+        
+      } catch (error) {
+        console.error('❌ 챗봇 설정 적용 오류:', error)
+        message.error('챗봇 설정 적용 중 오류가 발생했습니다.')
+      }
+    }
 
     return {
       h,
@@ -711,7 +788,9 @@ export default defineComponent({
       updateChartConfig,
       previewChart,
       saveChart,
-      handlePresetSelected 
+      handlePresetSelected,
+      showChatbot, 
+      handleChatbotGenerated
     }
   }
 })

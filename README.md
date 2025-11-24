@@ -382,6 +382,69 @@ docker-compose logs -f mariadb
 # MariaDB 컨테이너 접속
 docker exec -it superset_mariadb mysql -u superset -p
 # 패스워드: superset123
+
+### **🆕 Claude API 키 설정 (AI 챗봇 기능용)**
+
+AI 차트 생성 챗봇 기능을 사용하려면 Claude API 키가 필요합니다.
+
+#### 1. Claude API 키 발급
+
+1. [Anthropic Console](https://console.anthropic.com)에 접속
+2. 계정 생성 또는 로그인
+3. "API Keys" 메뉴에서 새 API 키 생성
+4. 생성된 키 복사 (형식: `sk-ant-api03-...`)
+
+#### 2. 환경변수 파일 생성
+```bash
+# vue-frontend 디렉토리로 이동
+cd vue-frontend
+
+# .env.local.example을 복사하여 .env.local 생성
+cp .env.local.example .env.local
+```
+
+#### 3. API 키 설정
+
+`.env.local` 파일을 열고 다음과 같이 설정:
+```bash
+# Claude API 설정
+VUE_APP_CLAUDE_API_KEY=sk-ant-api03-your_actual_api_key_here
+VUE_APP_CLAUDE_API_URL=https://api.anthropic.com/v1/messages
+VUE_APP_CLAUDE_MODEL=claude-sonnet-4-20250514
+
+# NLP 챗봇 설정
+VUE_APP_NLP_FALLBACK_ENABLED=true
+VUE_APP_NLP_MIN_CONFIDENCE=0.7
+```
+
+#### 4. 컨테이너 재시작
+```bash
+# 프로젝트 루트 디렉토리에서
+docker-compose restart vue-frontend
+```
+
+#### ⚠️ 주의사항
+
+- **`.env.local` 파일은 절대 Git에 커밋하지 마세요!** (이미 .gitignore에 포함됨)
+- API 키는 외부에 노출되지 않도록 주의하세요
+- 키워드 기반 폴백 기능은 API 키 없이도 작동합니다
+- 프로덕션 환경에서는 환경변수를 서버 설정으로 관리하세요
+
+#### 📊 기능 비교
+
+| 기능 | Claude API | 키워드 기반 폴백 |
+|------|------------|-----------------|
+| 자연어 이해 | ⭐⭐⭐⭐⭐ 매우 우수 | ⭐⭐⭐ 보통 |
+| 복잡한 요청 처리 | ✅ 가능 | ⚠️ 제한적 |
+| 컨텍스트 이해 | ✅ 우수 | ❌ 없음 |
+| API 키 필요 | ✅ 필수 | ❌ 불필요 |
+| 비용 | 💰 유료 | 🆓 무료 |
+
+### Vue.js Frontend 개발
+```bash
+cd vue-frontend
+npm install
+npm run serve
 ```
 
 ---

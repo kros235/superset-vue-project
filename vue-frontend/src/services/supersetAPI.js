@@ -61,13 +61,15 @@ class SupersetAPI {
       async (error) => {
         const originalRequest = error.config
         
-        console.error(`[API 응답 오류] ${error.response?.status || 'Network Error'} ${error.config?.url}:`)
+          console.error(`[API 응답 오류] ${error.response?.status || 'Network Error'} ${error.config?.url}:`)
         
-        if (error.response) {
-          console.log('[API 응답 오류]', error.response?.status, url)
-          console.log('응답 상태:', error.response?.status)
-          console.log('응답 헤더:', error.response?.headers)
-          console.log('응답 데이터:', error.response?.data)
+          if (error.response) {
+            // ❌ 삭제: console.log('[API 응답 오류]', error.response?.status, url)
+            // ✅ 수정: url 변수 대신 error.config.url 사용
+            console.log('[API 응답 오류]', error.response?.status, error.config?.url)
+            console.log('응답 상태:', error.response?.status)
+            console.log('응답 헤더:', error.response?.headers)
+            console.log('응답 데이터:', error.response?.data)
           
           if (error.response?.data?.message) {
             console.error('🚨 에러 메시지:', JSON.stringify(error.response.data.message, null, 2))
