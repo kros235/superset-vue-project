@@ -283,6 +283,36 @@ DO NOT OUTPUT ANYTHING OTHER THAN VALID JSON.`
     
     return groupby
   }
+
+  // 🆕 Alias로 컬럼 찾기
+  findColumnByAlias(alias, columns) {
+    if (!alias) return null
+    const aliasLower = alias.toLowerCase()
+    
+    // 1. alias 필드에서 정확히 일치하는 컬럼 찾기
+    let matched = columns.find(col => {
+      if (col.alias && col.alias.toLowerCase().includes(aliasLower)) return true
+      return false
+    })
+    
+    if (matched) return matched
+    
+    // 2. verbose_name에서 찾기
+    matched = columns.find(col => {
+      if (col.verbose_name && col.verbose_name.toLowerCase().includes(aliasLower)) return true
+      return false
+    })
+    
+    if (matched) return matched
+    
+    // 3. column_name에서 찾기
+    matched = columns.find(col => {
+      if (col.column_name && col.column_name.toLowerCase().includes(aliasLower)) return true
+      return false
+    })
+    
+    return matched || null
+  }
   extractFilters(message, columns) {
     const filters = []
     const yearMatch = message.match(/(\d{4})년/)

@@ -1161,7 +1161,6 @@ class SupersetAPI {
       database_id: databaseId, // 🔥 객체가 아닌 숫자 ID
       sql: sql,
       schema: schemaName || undefined, // null 대신 undefined
-      limit: 1000,
       select_as_cta: false,
       tmp_table_name: '',
       client_id: `client_${Date.now()}`,

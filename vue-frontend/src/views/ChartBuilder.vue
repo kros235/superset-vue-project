@@ -338,8 +338,21 @@ export default defineComponent({
         datasetColumns.value = columns || []
         console.log('로드된 컬럼:', columns)
         
-        // 🆕 추가: 저장된 Alias 로드
-        datasetAliases.value = columnAliasService.getAliases(datasetId)
+        // 🆕 추가: 저장된 Alias 로드 (localStorage + verbose_name 병합)
+        const localAliases = columnAliasService.getAliases(datasetId)
+        
+        // Superset verbose_name에서도 Alias 추출
+        const verboseAliases = {}
+        if (columns && columns.length > 0) {
+          columns.forEach(col => {
+            if (col.verbose_name && col.verbose_name !== col.column_name) {
+              verboseAliases[col.column_name] = col.verbose_name
+            }
+          })
+        }
+        
+        // 병합 (localStorage가 우선)
+        datasetAliases.value = { ...verboseAliases, ...localAliases }
         console.log('🆕 로드된 Alias:', datasetAliases.value)
         
         // 메트릭 정보 로드 (실패해도 계속 진행)

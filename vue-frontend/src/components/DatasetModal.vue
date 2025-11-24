@@ -41,7 +41,7 @@
         <a-form-item label="스키마">
           <a-select
             v-model:value="form.schema"
-            placeholder="모든 스키마"
+            placeholder="스키마를 선택하세요 (권장)"
             allow-clear
             :loading="schemasLoading"
           >
@@ -154,6 +154,14 @@
       </template>
     </a-modal>
 
+    <!-- 🆕 Alias 설정 모달 -->
+    <ColumnAliasModal
+      :visible="showAliasModal"
+      :dataset-id="createdDatasetId"
+      @close="handleAliasClose"
+      @next="handleAliasNext"
+    />
+
     <!-- 🔥 프리셋 모달 -->
     <PresetModal
       :visible="showPresetModal"
@@ -171,6 +179,7 @@ import { DatabaseOutlined, DeleteOutlined, PlusOutlined, FileTextOutlined } from
 import supersetAPI from '@/services/supersetAPI' 
 import presetAPI from '@/services/presetAPI'
 import PresetModal from './PresetModal.vue'
+import ColumnAliasModal from './ColumnAliasModal.vue'
 
 export default defineComponent({
   name: 'DatasetModal',
@@ -179,7 +188,8 @@ export default defineComponent({
     DeleteOutlined,
     PlusOutlined,
     FileTextOutlined,
-    PresetModal
+    PresetModal,
+    ColumnAliasModal
   },
   props: {
     visible: Boolean,
@@ -203,6 +213,8 @@ export default defineComponent({
     // 🔥 추가: 프리셋 모달 관련 state
     const showPresetModal = ref(false)
     const createdDatasetId = ref(null)
+    // 🆕 추가: Alias 모달 관련 state
+    const showAliasModal = ref(false)
 
 
     const form = ref({
@@ -385,7 +397,7 @@ export default defineComponent({
 
         // 🔥 추가: 현재 모달 닫고 프리셋 모달 열기
         handleCancel()
-        showPresetModal.value = true
+        showAliasModal.value = true 
 
       } catch (error) {
         console.error('데이터셋 생성 오류:', error)
@@ -425,6 +437,18 @@ export default defineComponent({
       emit('success')
     }
 
+    // 🆕 추가: Alias 모달에서 다음으로 이동 (Preset 모달 열기)
+    const handleAliasNext = () => {
+      showAliasModal.value = false
+      showPresetModal.value = true  // Preset 모달로 이동
+    }
+
+    // 🆕 추가: Alias 모달 닫기 (건너뛰기 시에도 Preset으로 이동)
+    const handleAliasClose = () => {
+      showAliasModal.value = false
+      showPresetModal.value = true  // Preset 모달로 이동
+    }
+
 
     // 🔥 메트릭 추천 함수 (숫자형 컬럼 찾기)
     const getRecommendedMetrics = computed(() => {
@@ -452,7 +476,7 @@ export default defineComponent({
     const handleCancel = () => {
       form.value = {
         database_id: undefined,
-        schema: 'sample_dashboard',
+        schema: '',
         table_name: '',
         table_name_display: '',
         presets: []
@@ -483,6 +507,12 @@ export default defineComponent({
       return 'default'
     }
 
+    // 🔥 추가: 스키마 변경 시 테이블 선택 초기화
+    const handleSchemaChange = (schemaName) => {
+      console.log(`📋 스키마 변경됨: ${schemaName}`)
+      form.value.table_name = '' // 테이블 선택 초기화
+    }
+
     // 🆕 테이블 선택 시 컬럼 로드 (수정된 handleTableChange)
     const handleTableChange = async (tableName) => {
       if (!tableName) return
@@ -493,31 +523,114 @@ export default defineComponent({
       const selectedTable = availableTablesRaw.value.find(t => t.value === tableName)
       const schemaName = selectedTable?.schema || form.value.schema
       
+      // 🔥 추가: 선택된 테이블의 스키마를 form에 자동 설정
+      if (selectedTable?.schema && !form.value.schema) {
+        form.value.schema = selectedTable.schema
+        console.log(`📋 스키마 자동 설정: ${selectedTable.schema}`)
+      }
+
       // 컬럼 정보 로드 시도
       columnsLoading.value = true
       try {
         if (form.value.database_id) {
-          const tableMetadata = await supersetAPI.getTableColumns(
-            form.value.database_id,
-            tableName,
-            schemaName
-          )
+          let columnsData = []
           
-          if (tableMetadata?.columns) {
-            availableColumns.value = tableMetadata.columns
+          // 🔥 방법 1: table_metadata API 시도
+          try {
+            console.log('📊 방법 1: table_metadata API 시도...')
+            const tableMetadata = await supersetAPI.getTableColumns(
+              form.value.database_id,
+              tableName,
+              schemaName
+            )
+            
+            if (tableMetadata?.columns && tableMetadata.columns.length > 0) {
+              columnsData = tableMetadata.columns.map(col => ({
+                column_name: col.name || col.column_name,
+                type: col.type || 'unknown'
+              }))
+              console.log('✅ 방법 1 성공:', columnsData)
+            }
+          } catch (metadataError) {
+            console.warn('⚠️ 방법 1 실패:', metadataError.message)
+          }
+          
+          // 🔥 방법 2: SQL Lab을 통한 컬럼 조회 (방법 1 실패 시)
+          if (columnsData.length === 0) {
+            try {
+              console.log('📊 방법 2: SQL Lab으로 컬럼 조회 시도...')
+              const fullTableName = schemaName ? `${schemaName}.${tableName}` : tableName
+              const sql = `SELECT * FROM ${fullTableName} LIMIT 1`
+              
+              const sqlResult = await supersetAPI.executeSQL(
+                form.value.database_id,
+                sql,
+                schemaName
+              )
+              
+              if (sqlResult?.columns) {
+                columnsData = sqlResult.columns.map(col => ({
+                  column_name: col.name || col,
+                  type: col.type || 'VARCHAR'
+                }))
+                console.log('✅ 방법 2 성공:', columnsData)
+              }
+            } catch (sqlError) {
+              console.warn('⚠️ 방법 2 실패:', sqlError.message)
+            }
+          }
+          
+          // 🔥 방법 3: INFORMATION_SCHEMA 조회 (방법 2도 실패 시)
+          if (columnsData.length === 0) {
+            try {
+              console.log('📊 방법 3: INFORMATION_SCHEMA 조회 시도...')
+              const infoSql = `
+                SELECT COLUMN_NAME, DATA_TYPE 
+                FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_SCHEMA = '${schemaName || 'sample_dashboard'}' 
+                AND TABLE_NAME = '${tableName}'
+              `
+              
+              const infoResult = await supersetAPI.executeSQL(
+                form.value.database_id,
+                infoSql,
+                schemaName
+              )
+              
+              if (infoResult?.data && infoResult.data.length > 0) {
+                columnsData = infoResult.data.map(row => ({
+                  column_name: row[0] || row.COLUMN_NAME,
+                  type: row[1] || row.DATA_TYPE || 'VARCHAR'
+                }))
+                console.log('✅ 방법 3 성공:', columnsData)
+              }
+            } catch (infoError) {
+              console.warn('⚠️ 방법 3 실패:', infoError.message)
+            }
+          }
+          
+          // 결과 적용
+          if (columnsData.length > 0) {
+            availableColumns.value = columnsData
             
             // 🆕 컬럼 Alias 데이터 초기화
-            columnAliasData.value = tableMetadata.columns.map(col => ({
-              column_name: col.name || col.column_name,
+            columnAliasData.value = columnsData.map(col => ({
+              column_name: col.column_name,
               type: col.type || 'unknown',
               alias: '' // 사용자가 입력할 별칭
             }))
             
-            console.log('컬럼 로드 완료:', availableColumns.value)
+            console.log('✅ 컬럼 로드 완료:', availableColumns.value.length, '개')
+            message.success(`${columnsData.length}개의 컬럼을 로드했습니다.`)
+          } else {
+            console.warn('⚠️ 모든 방법 실패 - 컬럼 정보 없음')
+            availableColumns.value = []
+            columnAliasData.value = []
+            message.warning('컬럼 정보를 가져올 수 없습니다. 데이터셋 생성은 가능합니다.')
           }
         }
       } catch (error) {
-        console.warn('컬럼 로드 실패 (계속 진행):', error)
+        console.error('❌ 컬럼 로드 실패:', error)
         availableColumns.value = []
         columnAliasData.value = []
       } finally {
@@ -558,6 +671,7 @@ export default defineComponent({
       removePreset,
       handleDatabaseChange,
       handleTableChange,
+      handleSchemaChange,
       filterTableOption,
       filterOption, 
       getTableTypeColor,
@@ -568,6 +682,9 @@ export default defineComponent({
       createdDatasetId,
       handlePresetModalClose,
       handlePresetSuccess,
+      showAliasModal,
+      handleAliasNext,
+      handleAliasClose,
       columnAliasData,
       aliasTableColumns,
       getColumnTypeColor,
