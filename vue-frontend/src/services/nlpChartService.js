@@ -54,17 +54,24 @@ class NLPChartService {
   /**
    * 메인 진입점: Claude API 우선, 실패 시 키워드 폴백
    */
-  async parseChartRequest(userMessage, dataset, columns) {
+  async parseChartRequest(userMessage, dataset, columns, columnAliases = {}) {
     console.log('🤖 NLP 차트 요청 분석 시작')
     console.log('입력:', userMessage)
     console.log('데이터셋:', dataset?.table_name)
     console.log('컬럼 수:', columns?.length)
+    console.log('🆕 컬럼 Aliases:', columnAliases)  // 🆕 추가
+    
+    // 🆕 Alias를 포함한 컬럼 정보 생성
+    const columnsWithAliases = columns.map(col => ({
+      ...col,
+      alias: columnAliases[col.column_name] || col.verbose_name || null
+    }))
     
     try {
       // 1순위: Claude API 사용
       if (this.claudeAPIKey && this.claudeAPIKey !== 'your_claude_api_key_here') {
         console.log('✨ Claude API 사용 시도...')
-        const result = await this.parseWithClaudeAPI(userMessage, dataset, columns)
+        const result = await this.parseWithClaudeAPI(userMessage, dataset, columnsWithAliases)  // 🆕 수정
         result.method = 'claude_api'
         
         if (result.confidence >= this.minConfidence) {
@@ -82,7 +89,7 @@ class NLPChartService {
     // 2순위: 키워드 기반 폴백
     if (this.fallbackEnabled) {
       console.log('🔄 키워드 기반 폴백 사용')
-      const result = this.parseWithKeywords(userMessage, dataset, columns)
+      const result = this.parseWithKeywords(userMessage, dataset, columnsWithAliases)  // 🆕 수정
       result.method = 'keyword_fallback'
       return result
     } else {
@@ -96,10 +103,12 @@ class NLPChartService {
   async parseWithClaudeAPI(userMessage, dataset, columns) {
     console.log('🧠 Claude API 호출 중...')
     
+    // 🆕 Alias 정보 포함
     const columnSummary = columns.map(col => ({
       name: col.column_name,
       type: col.type_generic === 0 ? 'numeric' : 'text',
-      description: col.verbose_name || col.column_name
+      description: col.verbose_name || col.column_name,
+      alias: col.alias || null  // 🆕 추가
     }))
     
     const prompt = `당신은 데이터 분석 전문가입니다. 사용자의 자연어 요청을 분석하여 차트 생성 파라미터를 추출해주세요.
@@ -108,6 +117,10 @@ class NLPChartService {
 - 데이터셋: ${dataset.table_name}
 - 데이터베이스: ${dataset.database?.database_name || 'Unknown'}
 - 사용 가능한 컬럼: ${JSON.stringify(columnSummary, null, 2)}
+
+**🆕 컬럼 별칭 안내:**
+사용자가 "팀별", "수익" 등의 한글 표현을 사용하면, 위 컬럼 목록에서 alias 또는 description이 일치하는 컬럼을 매칭하세요.
+예: "팀별" → team 컬럼, "수익" → revenue 컬럼
 
 **사용자 요청:**
 "${userMessage}"
@@ -247,8 +260,22 @@ DO NOT OUTPUT ANYTHING OTHER THAN VALID JSON.`
     const patterns = ['별', 'by', '기준', '그룹']
     
     if (patterns.some(pattern => message.includes(pattern))) {
+      // 🆕 한글 키워드로 Alias 매칭
+      const koreanKeywords = ['팀', '부서', '지역', '월', '연도', '제품', '고객', '직급', '회사', '조직']
+      
+      for (const keyword of koreanKeywords) {
+        if (message.includes(keyword)) {
+          const matchedCol = this.findColumnByAlias(keyword, columns)
+          if (matchedCol) {
+            groupby.push(matchedCol.column_name)
+            console.log(`🆕 Alias 매칭: "${keyword}" → ${matchedCol.column_name}`)
+          }
+        }
+      }
+      
+      // 기존 방식: 컬럼명 직접 매칭
       for (const col of columns) {
-        if (message.includes(col.column_name.toLowerCase())) {
+        if (message.includes(col.column_name.toLowerCase()) && !groupby.includes(col.column_name)) {
           groupby.push(col.column_name)
         }
       }
@@ -256,7 +283,6 @@ DO NOT OUTPUT ANYTHING OTHER THAN VALID JSON.`
     
     return groupby
   }
-
   extractFilters(message, columns) {
     const filters = []
     const yearMatch = message.match(/(\d{4})년/)

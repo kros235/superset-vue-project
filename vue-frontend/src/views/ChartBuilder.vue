@@ -187,6 +187,26 @@
         </div>
       </div>
     </template>
+
+    <!-- 🆕 AI 챗봇 모달 추가 -->
+    <a-modal
+      v-model:visible="showChatbot"
+      title="AI 차트 생성 도우미"
+      :width="720"
+      :footer="null"
+      :destroyOnClose="true"
+      @cancel="showChatbot = false"
+    >
+      <ChartChatbot
+        v-if="selectedDataset && showChatbot"
+        :selected-dataset="selectedDataset"
+        :dataset-columns="datasetColumns"
+        :column-aliases="datasetAliases"
+        @chart-generated="handleChatbotGenerated"
+        @close="showChatbot = false"
+      />
+    </a-modal>
+
   </div>
 </template>
 
@@ -209,6 +229,7 @@ import ChartConfiguration from '../components/chart-builder/ChartConfiguration.v
 import ChartDetails from '../components/chart-builder/ChartDetails.vue'
 import ChartPreview from '../components/chart-builder/ChartPreview.vue'
 import ChartChatbot from '../components/ChartChatbot.vue' 
+import columnAliasService from '../services/columnAliasService'
 
 export default defineComponent({
   name: 'ChartBuilderView',
@@ -305,7 +326,8 @@ export default defineComponent({
       }
     }
 
-    // 🔥 개선된 데이터셋 컬럼 로드
+    const datasetAliases = ref({})  // 🆕 추가
+
     const loadDatasetColumns = async (datasetId) => {
       columnsLoading.value = true
       try {
@@ -315,6 +337,10 @@ export default defineComponent({
         const columns = await supersetAPI.getDatasetColumns(datasetId)
         datasetColumns.value = columns || []
         console.log('로드된 컬럼:', columns)
+        
+        // 🆕 추가: 저장된 Alias 로드
+        datasetAliases.value = columnAliasService.getAliases(datasetId)
+        console.log('🆕 로드된 Alias:', datasetAliases.value)
         
         // 메트릭 정보 로드 (실패해도 계속 진행)
         try {

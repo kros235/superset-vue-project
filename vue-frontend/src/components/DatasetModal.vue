@@ -86,6 +86,50 @@
           </div>
         </a-form-item>
 
+        <!-- 🆕 컬럼 Alias 설정 섹션 -->
+        <a-divider orientation="left" v-if="form.table_name && availableColumns.length > 0">
+          <span style="font-size: 14px; font-weight: 600">
+            🏷️ 컬럼 별칭 설정 (선택사항)
+          </span>
+        </a-divider>
+
+        <a-form-item 
+          v-if="form.table_name && availableColumns.length > 0"
+          label="컬럼 별칭"
+        >
+          <a-alert
+            message="자연어 차트 생성에 활용됩니다"
+            description="컬럼에 한글 별칭을 지정하면 AI가 '팀별 수익' 같은 자연어 요청을 더 잘 이해합니다."
+            type="info"
+            show-icon
+            style="margin-bottom: 16px"
+          />
+          
+          <a-table
+            :dataSource="columnAliasData"
+            :columns="aliasTableColumns"
+            :pagination="false"
+            size="small"
+            :scroll="{ y: 300 }"
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'alias'">
+                <a-input
+                  v-model:value="record.alias"
+                  :placeholder="`${record.column_name}의 별칭`"
+                  style="width: 100%"
+                  @change="handleAliasChange(record)"
+                />
+              </template>
+              <template v-if="column.key === 'type'">
+                <a-tag :color="getColumnTypeColor(record.type)">
+                  {{ record.type }}
+                </a-tag>
+              </template>
+            </template>
+          </a-table>
+        </a-form-item>
+
         <!-- 데이터셋 이름 (선택사항) -->
         <a-form-item label="데이터셋 이름 (선택사항)">
           <a-input
@@ -381,13 +425,6 @@ export default defineComponent({
       emit('success')
     }
 
-    // 🔥 수정: handleTableChange 간소화
-    const handleTableChange = async (tableName) => {
-      if (!tableName) return
-      
-      console.log(`✅ 테이블 선택됨: ${tableName}`)
-      // API 미지원으로 컬럼 조회 생략
-    }
 
     // 🔥 메트릭 추천 함수 (숫자형 컬럼 찾기)
     const getRecommendedMetrics = computed(() => {
@@ -425,6 +462,79 @@ export default defineComponent({
       emit('close')
     }
 
+    // 🆕 컬럼 Alias 관련 데이터
+    const columnAliasData = ref([])
+    const aliasTableColumns = [
+      { title: '컬럼명', dataIndex: 'column_name', key: 'column_name', width: '30%' },
+      { title: '타입', dataIndex: 'type', key: 'type', width: '20%' },
+      { title: '별칭 (한글)', dataIndex: 'alias', key: 'alias', width: '50%' }
+    ]
+
+    // 🆕 컬럼 타입별 색상
+    const getColumnTypeColor = (type) => {
+      const typeStr = (type || '').toLowerCase()
+      if (typeStr.includes('int') || typeStr.includes('decimal') || typeStr.includes('float')) {
+        return 'blue'
+      } else if (typeStr.includes('date') || typeStr.includes('time')) {
+        return 'green'
+      } else if (typeStr.includes('char') || typeStr.includes('text')) {
+        return 'orange'
+      }
+      return 'default'
+    }
+
+    // 🆕 테이블 선택 시 컬럼 로드 (수정된 handleTableChange)
+    const handleTableChange = async (tableName) => {
+      if (!tableName) return
+      
+      console.log(`✅ 테이블 선택됨: ${tableName}`)
+      
+      // 선택된 테이블의 스키마 찾기
+      const selectedTable = availableTablesRaw.value.find(t => t.value === tableName)
+      const schemaName = selectedTable?.schema || form.value.schema
+      
+      // 컬럼 정보 로드 시도
+      columnsLoading.value = true
+      try {
+        if (form.value.database_id) {
+          const tableMetadata = await supersetAPI.getTableColumns(
+            form.value.database_id,
+            tableName,
+            schemaName
+          )
+          
+          if (tableMetadata?.columns) {
+            availableColumns.value = tableMetadata.columns
+            
+            // 🆕 컬럼 Alias 데이터 초기화
+            columnAliasData.value = tableMetadata.columns.map(col => ({
+              column_name: col.name || col.column_name,
+              type: col.type || 'unknown',
+              alias: '' // 사용자가 입력할 별칭
+            }))
+            
+            console.log('컬럼 로드 완료:', availableColumns.value)
+          }
+        }
+      } catch (error) {
+        console.warn('컬럼 로드 실패 (계속 진행):', error)
+        availableColumns.value = []
+        columnAliasData.value = []
+      } finally {
+        columnsLoading.value = false
+      }
+    }
+
+    // 🆕 Alias 변경 핸들러
+    const handleAliasChange = (record) => {
+      console.log('Alias 변경:', record.column_name, '->', record.alias)
+      // form에 alias 정보 저장
+      if (!form.value.columnAliases) {
+        form.value.columnAliases = {}
+      }
+      form.value.columnAliases[record.column_name] = record.alias
+    }
+
     watch(enablePreset, (newVal) => {
       if (!newVal) form.value.presets = []
     })
@@ -457,7 +567,11 @@ export default defineComponent({
       showPresetModal,
       createdDatasetId,
       handlePresetModalClose,
-      handlePresetSuccess
+      handlePresetSuccess,
+      columnAliasData,
+      aliasTableColumns,
+      getColumnTypeColor,
+      handleAliasChange
     }
   }
 })
