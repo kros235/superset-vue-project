@@ -14,6 +14,7 @@ Apache Superset과 Vue.js를 연동한 대시보드 프로젝트입니다.
 - **✅ 대시보드 생성 및 관리** (Apache Superset API 호출)
 - **✅ 차트 내보내기 기능** (JSON, CSV, HTML 테이블/차트, PNG, iframe 임베드) **← 🆕 추가**
 - **✅ 차트 프리셋 시스템** **← 🆕 추가**
+- **✅ AI 기반 차트 생성** (Claude API 통합) **← 🆕 추가**
 - **🔄 사용자별 권한 관리** (Apache Superset API 호출) **← 진행 중**
 - **🔄 역할별 접근 제어** (Apache Superset API 호출) **← 진행 중**
 - **🔄 Row-Level Security (RLS)** **← 계획 중**
@@ -25,7 +26,13 @@ Apache Superset과 Vue.js를 연동한 대시보드 프로젝트입니다.
 ## 🏗️ 시스템 아키텍처
 
 ```
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+                   ┌─────────────┐
+                   │  Claude AI  │  **← 🆕 추가**
+                   │  (NLP 차트  │
+                   │    생성)    │
+                   └──────┬──────┘
+                          │
+┌─────────────┐    ┌─────▼───────┐    ┌─────────────┐
 │   Vue.js    │    │   Apache    │    │   MariaDB   │
 │  Frontend   │◄──►│  Superset   │◄──►│  Database   │
 │  (Port:8080)│    │ (Port:8088) │    │ (Port:3306) │
@@ -38,6 +45,13 @@ Apache Superset과 Vue.js를 연동한 대시보드 프로젝트입니다.
                    │ (Port:6379) │
                    └─────────────┘
 ```
+
+### 주요 구성 요소
+- **Vue.js Frontend**: 사용자 인터페이스 및 AI 차트 생성 챗봇 **← 🆕**
+- **Claude AI**: 자연어 처리 기반 차트 생성 (선택적 기능) **← 🆕**
+- **Apache Superset**: 데이터 시각화 엔진 (REST API 제공)
+- **MariaDB**: 메인 데이터베이스 (샘플 데이터 포함)
+- **Redis**: 캐싱 및 세션 관리
 
 ---
 
@@ -53,7 +67,11 @@ Apache Superset과 Vue.js를 연동한 대시보드 프로젝트입니다.
 - **Ant Design Vue**: UI 컴포넌트 라이브러리
 - **Axios**: HTTP 클라이언트 (Superset API 호출)
 - **Vue Router**: 라우팅
-- **Rison**: Superset API 파라미터 인코딩 **← 🆕 추가**
+- **Rison**: Superset API 파라미터 인코딩
+
+### **🆕 AI 통합**
+- **Claude API (Anthropic)**: 자연어 처리 기반 차트 생성
+- **Fallback 시스템**: API 키 없이도 키워드 기반으로 동작
 
 ### DevOps
 - **Docker & Docker Compose**: 컨테이너화
@@ -67,6 +85,7 @@ Apache Superset과 Vue.js를 연동한 대시보드 프로젝트입니다.
 - Docker Desktop for Windows
 - Windows 10 환경
 - Git (선택사항)
+- **Claude API 키** (AI 차트 생성 기능 사용 시, 선택사항) **← 🆕**
 
 ### 실행 방법
 
@@ -109,7 +128,7 @@ SQLALCHEMY URI: mysql+pymysql://superset:superset123@mariadb:3306/sample_dashboa
 
 ---
 
-## 📁 프로젝트 구조 **← 🆕 확장됨**
+## 📁 프로젝트 구조
 
 ```
 superset-vue-project/
@@ -119,20 +138,18 @@ superset-vue-project/
 ├── database/
 │   └── init/
 │       ├── 01-create-database.sql  # 초기 데이터베이스 스키마
-│       └── 02-sample-data.sql      # 샘플 데이터 (30개 레코드) **← 🆕 추가**
-│       └── 03-rls-test-data.sql    # RLS 테스트 데이터 **← 🆕 추가 (계획)**
+│       └── 02-sample-data.sql      # 샘플 데이터 (30개 레코드)
 ├── vue-frontend/                   # Vue.js 프론트엔드
 │   ├── Dockerfile
 │   ├── package.json
+│   ├── .env.local.example          # 환경변수 예시 파일 **← 🆕**
 │   ├── public/
-│   │   ├── index.html
-│   │   └── manifest.json
 │   └── src/
 │       ├── App.vue
 │       ├── main.js
 │       ├── router/
 │       │   └── index.js            # 라우팅 설정
-│       ├── views/                  # 페이지 컴포넌트 **← 🆕 추가**
+│       ├── views/
 │       │   ├── Dashboard.vue       # 대시보드 메인 페이지
 │       │   ├── ChartBuilder.vue    # 차트 빌더 페이지
 │       │   ├── DataSources.vue     # 데이터 소스 관리
@@ -140,67 +157,259 @@ superset-vue-project/
 │       │   └── Login.vue           # 로그인 페이지
 │       ├── components/
 │       │   ├── Layout.vue          # 레이아웃
-│       │   ├── chart-builder/      # 차트 빌더 컴포넌트 **← 🆕 추가**
-│       │   │   ├── DatasetSelection.vue        # 1단계: 데이터셋 선택
-│       │   │   ├── ChartTypeSelection.vue      # 2단계: 차트 타입 선택
-│       │   │   ├── ChartConfiguration.vue      # 3단계: 차트 설정
-│       │   │   ├── DynamicChartOptions.vue     # 동적 차트 옵션 **← 🆕 핵심**
-│       │   │   ├── ChartDetails.vue            # 4단계: 차트 상세 정보
-│       │   │   ├── ChartPreview.vue            # 5단계: 미리보기 & 저장
-│       │   │   └── options/                    # 옵션 컴포넌트들 **← 🆕**
-│       │   │       ├── TextOption.vue
-│       │   │       ├── NumberOption.vue
-│       │   │       ├── SelectOption.vue
-│       │   │       ├── CheckboxOption.vue
-│       │   │       ├── MetricSelectOption.vue
-│       │   │       ├── ColumnSelectOption.vue
-│       │   │       ├── FilterOption.vue
-│       │   │       └── TextareaOption.vue
+│       │   ├── ChartChatbot.vue    # AI 차트 생성 챗봇 **← 🆕**
+│       │   ├── chart-builder/      # 차트 빌더 컴포넌트
+│       │   │   ├── DatasetSelection.vue
+│       │   │   ├── ChartTypeSelection.vue
+│       │   │   ├── ChartConfiguration.vue
+│       │   │   ├── DynamicChartOptions.vue
+│       │   │   ├── ChartDetails.vue
+│       │   │   ├── ChartPreview.vue
+│       │   │   └── options/        # 옵션 컴포넌트들
 │       │   └── DataSourceManager.vue
 │       ├── services/
-│       │   ├── supersetAPI.js      # Superset API 호출 서비스 **← 🔧 확장**
-│       │   └── authService.js      # 인증 서비스 **← 🔧 확장**
+│       │   ├── supersetAPI.js      # Superset API 호출 서비스
+│       │   ├── nlpChartService.js  # NLP 차트 생성 서비스 **← 🆕**
+│       │   └── authService.js      # 인증 서비스
 │       └── utils/
-│           ├── constants.js        # 상수
-│           ├── chartOptions.js     # 차트 옵션 정의 **← 🆕 핵심**
-│           └── chartPresets.js     # 차트 프리셋 **← 🆕 추가**
+│           ├── constants.js
+│           ├── chartOptions.js     # 차트 옵션 정의
+│           └── chartPresets.js     # 차트 프리셋
 └── README.md
 ```
 
 ---
 
-## 🗄️ 샘플 데이터베이스
+## 🗄️ 데이터베이스 테이블 구조
+
+### 샘플 데이터베이스: `sample_dashboard`
 
 프로젝트에는 대시보드 구성을 위한 샘플 테이블들이 자동으로 생성됩니다.
 
-### 테이블 구조
-
 #### 기본 분석용 테이블 (각 30개 레코드)
-- **users**: 사용자 정보
-  - id, name, email, department, join_date, salary, position, status
-- **sales**: 판매 데이터
-  - id, sale_date, product_name, quantity, unit_price, total_amount, salesperson, region, customer_type
-- **web_traffic**: 웹사이트 트래픽
-  - id, visit_date, unique_visitors, page_views, bounce_rate, session_duration, traffic_source, device_type
-- **customer_satisfaction**: 고객 만족도
-  - id, survey_date, rating, category, feedback, customer_age_group, response_time_hours
 
-#### **🆕 RLS 테스트용 테이블 (계획 중)**
-- **employees**: 직원 데이터
-  - id, name, email, company, team, position (책임/선임/전임), hire_date
-  - 회사: 'KT DS', '알앤비소프트'
-  - 팀: 'CRM서비스팀', '데이터분석팀', '인프라팀' 등
+##### 1. **users** - 사용자 정보
+| 컬럼명 | 타입 | 설명 | 용도 |
+|--------|------|------|------|
+| id | INT (PK) | 사용자 ID | 고유 식별자 |
+| name | VARCHAR(100) | 이름 | 사용자 이름 |
+| email | VARCHAR(150) | 이메일 | 연락처 |
+| department | VARCHAR(50) | 부서 | 부서별 분석용 |
+| join_date | DATE | 입사일 | 시계열 분석용 |
+| salary | DECIMAL(10,2) | 급여 | 급여 분석용 |
+| position | VARCHAR(50) | 직급 | 직급별 분석용 |
+| status | ENUM | 재직 상태 | 필터링용 |
+
+**사용 예시**: 부서별 직원 수, 평균 급여, 입사 트렌드 분석
+
+##### 2. **sales** - 판매 데이터
+| 컬럼명 | 타입 | 설명 | 용도 |
+|--------|------|------|------|
+| id | INT (PK) | 판매 ID | 고유 식별자 |
+| sale_date | DATE | 판매 날짜 | 시계열 분석용 |
+| product_name | VARCHAR(100) | 제품명 | 제품별 분석용 |
+| quantity | INT | 판매 수량 | 수량 집계용 |
+| unit_price | DECIMAL(8,2) | 단가 | 가격 분석용 |
+| total_amount | DECIMAL(10,2) | 총 금액 | 매출 분석용 |
+| salesperson | VARCHAR(100) | 판매자 | 판매자별 성과 |
+| region | VARCHAR(50) | 지역 | 지역별 분석용 |
+| customer_type | ENUM | 고객 유형 | 고객 세분화용 |
+
+**사용 예시**: 월별 매출, 지역별 판매량, 제품별 수익, 판매자 순위
+
+##### 3. **web_traffic** - 웹사이트 트래픽
+| 컬럼명 | 타입 | 설명 | 용도 |
+|--------|------|------|------|
+| id | INT (PK) | 트래픽 ID | 고유 식별자 |
+| visit_date | DATE | 방문 날짜 | 시계열 분석용 |
+| unique_visitors | INT | 순방문자 수 | 트래픽 지표 |
+| page_views | INT | 페이지뷰 | 페이지 조회수 |
+| bounce_rate | DECIMAL(5,2) | 이탈률 (%) | 사용자 행동 분석 |
+| session_duration | INT | 세션 시간 (초) | 체류 시간 분석 |
+| traffic_source | VARCHAR(50) | 유입 경로 | 마케팅 채널 분석 |
+| device_type | ENUM | 기기 유형 | 디바이스별 분석 |
+
+**사용 예시**: 일별 트래픽 추이, 유입 경로 분석, 디바이스별 사용 패턴
+
+##### 4. **customer_satisfaction** - 고객 만족도
+| 컬럼명 | 타입 | 설명 | 용도 |
+|--------|------|------|------|
+| id | INT (PK) | 설문 ID | 고유 식별자 |
+| survey_date | DATE | 설문 날짜 | 시계열 분석용 |
+| rating | INT | 평점 (1-5) | 만족도 점수 |
+| category | VARCHAR(50) | 카테고리 | 부문별 분석용 |
+| feedback | TEXT | 피드백 내용 | 텍스트 분석용 |
+| customer_age_group | ENUM | 연령대 | 고객 세분화용 |
+| response_time_hours | INT | 응답 시간 (시간) | 서비스 품질 지표 |
+
+**사용 예시**: 평균 만족도 추이, 카테고리별 평점, 연령대별 만족도, 응답 시간 분석
+
+#### **🔄 RLS 테스트용 테이블 (개발 예정)**
+
+##### 5. **employee_data** - 권한 분리 테스트용 직원 데이터
+| 컬럼명 | 타입 | 설명 | 용도 |
+|--------|------|------|------|
+| id | INT (PK) | 직원 ID | 고유 식별자 |
+| name | VARCHAR(100) | 이름 | 직원 이름 |
+| email | VARCHAR(100) | 이메일 | 연락처 |
+| company | VARCHAR(100) | 회사명 | RLS 필터링 기준 |
+| team | VARCHAR(100) | 팀명 | RLS 필터링 기준 |
+| position | VARCHAR(50) | 직급 | 책임/선임/전임 |
+| salary | DECIMAL(15,2) | 급여 | 급여 분석용 |
+| join_date | DATE | 입사일 | 시계열 분석용 |
+| status | VARCHAR(20) | 재직 상태 | 필터링용 |
+
+**회사**: 'KT DS', '알앤비소프트'  
+**팀**: 'CRM서비스팀', '데이터분석팀', '인프라팀' 등  
+**직급**: '책임', '선임', '전임'
+
+**RLS 시나리오 예시**:
+- **C 유저 (KT DS 회장)**: 전체 KT DS 회사 데이터 조회 가능
+- **D 유저 (CRM서비스팀 팀장)**: CRM서비스팀 소속 데이터만 조회
+- **F 유저 (알앤비소프트 이사)**: 알앤비소프트 회사 데이터만 조회
 
 ### 샘플 대시보드 구성
+
 4개의 차트로 구성된 대시보드를 생성할 수 있습니다:
-1. **월별 매출 현황** (sales 테이블 기반)
-2. **웹사이트 트래픽 분석** (web_traffic 테이블 기반)
-3. **부서별 직원 현황** (users 테이블 기반)
-4. **고객 만족도 트렌드** (customer_satisfaction 테이블 기반)
+
+1. **📊 월별 매출 현황** (sales 테이블 기반)
+   - 차트 타입: 선 차트 (Line Chart)
+   - 메트릭: SUM(total_amount)
+   - 그룹: sale_date (월별)
+
+2. **🌐 웹사이트 트래픽 분석** (web_traffic 테이블 기반)
+   - 차트 타입: 영역 차트 (Area Chart)
+   - 메트릭: SUM(unique_visitors), SUM(page_views)
+   - 그룹: visit_date
+
+3. **👥 부서별 직원 현황** (users 테이블 기반)
+   - 차트 타입: 막대 차트 (Bar Chart)
+   - 메트릭: COUNT(id)
+   - 그룹: department
+
+4. **⭐ 고객 만족도 트렌드** (customer_satisfaction 테이블 기반)
+   - 차트 타입: 선 차트 (Line Chart)
+   - 메트릭: AVG(rating)
+   - 그룹: survey_date
 
 ---
 
-## 🎨 차트 빌더 기능 **← 🆕 핵심 기능**
+## 🤖 AI 기반 차트 생성 **← 🆕 핵심 기능**
+
+### 개요
+
+자연어로 차트 생성 요청을 입력하면 Claude AI가 자동으로 차트 설정을 생성합니다.
+
+### 작동 방식
+
+```
+사용자 입력 (자연어)
+    ↓
+Claude API / 키워드 분석
+    ↓
+차트 설정 생성 (JSON)
+    ↓
+Vue.js 차트 빌더에 자동 적용
+    ↓
+미리보기 및 저장
+```
+
+### 사용 예시
+
+#### 예시 1: 기본 막대 차트
+```
+입력: "판매량을 막대차트로 보여줘"
+
+생성 결과:
+- 차트 타입: bar
+- 메트릭: SUM(quantity)
+- 그룹: product_name
+```
+
+#### 예시 2: 필터가 포함된 선 차트
+```
+입력: "2025년 지역별 총 매출을 선 차트로 만들어줘"
+
+생성 결과:
+- 차트 타입: line
+- 메트릭: SUM(total_amount)
+- 그룹: region
+- 필터: year == 2025
+```
+
+#### 예시 3: 파이 차트
+```
+입력: "고객 유형별 비율을 파이차트로"
+
+생성 결과:
+- 차트 타입: pie
+- 메트릭: COUNT(*)
+- 그룹: customer_type
+```
+
+### AI 시스템 구성
+
+#### 1. **Claude API 모드** (권장)
+- **장점**: 높은 정확도, 복잡한 요청 처리 가능, 컨텍스트 이해
+- **단점**: API 키 필요, 유료
+- **정확도**: ⭐⭐⭐⭐⭐
+
+#### 2. **키워드 기반 폴백 모드**
+- **장점**: API 키 불필요, 무료
+- **단점**: 제한적인 분석 능력
+- **정확도**: ⭐⭐⭐
+
+### 설정 방법
+
+#### 1. Claude API 키 발급
+
+1. [Anthropic Console](https://console.anthropic.com) 접속
+2. 계정 생성 또는 로그인
+3. "API Keys" 메뉴에서 새 API 키 생성
+4. 생성된 키 복사 (형식: `sk-ant-api03-...`)
+
+#### 2. 환경변수 설정
+
+```bash
+# vue-frontend 디렉토리로 이동
+cd vue-frontend
+
+# .env.local.example을 복사
+cp .env.local.example .env.local
+
+# .env.local 파일 편집
+VUE_APP_CLAUDE_API_KEY=sk-ant-api03-your_actual_api_key_here
+VUE_APP_CLAUDE_MODEL=claude-sonnet-4-20250514
+VUE_APP_NLP_FALLBACK_ENABLED=true
+VUE_APP_NLP_MIN_CONFIDENCE=0.7
+```
+
+#### 3. 컨테이너 재시작
+
+```bash
+docker-compose restart vue-frontend
+```
+
+### ⚠️ 주의사항
+
+- `.env.local` 파일은 절대 Git에 커밋하지 마세요 (이미 .gitignore에 포함됨)
+- API 키는 외부에 노출되지 않도록 주의하세요
+- 키워드 기반 폴백은 API 키 없이도 작동합니다
+- 프로덕션 환경에서는 환경변수를 서버 설정으로 관리하세요
+
+### 기능 비교
+
+| 기능 | Claude API | 키워드 기반 폴백 |
+|------|------------|-----------------|
+| 자연어 이해 | ⭐⭐⭐⭐⭐ 매우 우수 | ⭐⭐⭐ 보통 |
+| 복잡한 요청 처리 | ✅ 가능 | ⚠️ 제한적 |
+| 컨텍스트 이해 | ✅ 우수 | ❌ 없음 |
+| API 키 필요 | ✅ 필수 | ❌ 불필요 |
+| 비용 | 💰 유료 | 🆓 무료 |
+
+---
+
+## 🎨 차트 빌더 기능
 
 Vue.js 웹페이지 내에서 Apache Superset UI와 동일한 방식으로 차트를 생성할 수 있습니다.
 
@@ -218,7 +427,7 @@ Vue.js 웹페이지 내에서 Apache Superset UI와 동일한 방식으로 차�
 5. 미리보기 & 저장
 ```
 
-### **🆕 동적 차트 옵션 시스템**
+### 동적 차트 옵션 시스템
 
 차트 타입별로 사용 가능한 모든 옵션을 자동으로 렌더링합니다.
 
@@ -232,25 +441,7 @@ Vue.js 웹페이지 내에서 Apache Superset UI와 동일한 방식으로 차�
 - **Filter**: 필터 조건 설정
 - **Textarea**: 긴 텍스트 입력
 
-#### 차트별 옵션 예시:
-
-**테이블 차트**
-- DATA 탭: 메트릭, 그룹 기준, 행 제한, 필터
-- CUSTOMIZE 탭: 페이지 크기, 검색 포함, 셀 막대 표시, 조건부 서식
-
-**막대 차트**
-- DATA 탭: 메트릭, 그룹 기준, 행 제한
-- CUSTOMIZE 탭: 색상 테마, 범례 표시, 축 레이블, 막대 방향
-
-**선 차트**
-- DATA 탭: 메트릭, 시계열 컬럼, 그룹 기준
-- CUSTOMIZE 탭: 보간 방법, 마커 표시, 범례 위치, Y축 범위
-
-**파이 차트**
-- DATA 탭: 메트릭, 그룹 기준
-- CUSTOMIZE 탭: 도넛 차트, 레이블 표시, 색상 테마
-
-### **🆕 차트 프리셋 시스템**
+### 차트 프리셋 시스템
 
 자주 사용하는 차트 설정을 프리셋으로 저장하여 빠르게 적용할 수 있습니다.
 
@@ -260,31 +451,17 @@ Vue.js 웹페이지 내에서 Apache Superset UI와 동일한 방식으로 차�
 - 🥧 **지역별 매출 비율**: 파이 차트 기반, 비율 표시
 - 📋 **상세 데이터 테이블**: 테이블 차트 기반, 검색 및 정렬
 
-### **🆕 차트 내보내기 기능**
+### 차트 내보내기 기능
 
 생성된 차트를 다양한 형식으로 내보낼 수 있습니다.
 
 #### 지원 형식:
-1. **JSON** 형식 내보내기
-   - 차트 데이터와 설정을 JSON으로 저장
-   
-2. **CSV** 형식 내보내기
-   - 차트의 원본 데이터를 CSV로 다운로드
-   
-3. **HTML 테이블** 내보내기
-   - 스타일이 적용된 HTML 테이블로 변환
-   - 클립보드 복사 또는 HTML 파일 다운로드
-   
-4. **HTML 차트** 내보내기
-   - Chart.js 기반의 독립 실행 가능한 HTML 파일
-   - 외부 의존성 없이 웹 브라우저에서 바로 실행
-   
-5. **PNG 이미지** 내보내기
-   - 차트를 PNG 이미지로 캡처하여 다운로드
-   
-6. **iframe 임베드** 코드
-   - Superset 네이티브 차트를 임베드할 수 있는 iframe 코드 생성
-   - 복사하여 외부 웹페이지에 붙여넣기
+1. **JSON** - 차트 데이터와 설정을 JSON으로 저장
+2. **CSV** - 차트의 원본 데이터를 CSV로 다운로드
+3. **HTML 테이블** - 스타일이 적용된 HTML 테이블로 변환
+4. **HTML 차트** - Chart.js 기반의 독립 실행 가능한 HTML 파일
+5. **PNG 이미지** - 차트를 PNG 이미지로 캡처
+6. **iframe 임베드** - Superset 차트를 임베드할 수 있는 코드 생성
 
 ---
 
@@ -304,13 +481,13 @@ Vue.js 앱에서 Superset API를 호출하여 다음 기능들을 구현합니�
 - `POST /api/v1/chart/` - 차트 생성
 - `PUT /api/v1/chart/{id}` - 차트 수정
 - `DELETE /api/v1/chart/{id}` - 차트 삭제
-- `POST /api/v1/chart/data` - 차트 데이터 조회 (Rison 인코딩 필요) **← 🆕 구현**
+- `POST /api/v1/chart/data` - 차트 데이터 조회 (Rison 인코딩 필요)
 
 #### 데이터셋
 - `GET /api/v1/dataset/` - 데이터셋 목록
 - `POST /api/v1/dataset/` - 데이터셋 생성
 - `GET /api/v1/dataset/{id}` - 데이터셋 상세 조회
-- `GET /api/v1/dataset/{id}/column` - 데이터셋 컬럼 조회 **← 🆕 구현**
+- `GET /api/v1/dataset/{id}/column` - 데이터셋 컬럼 조회
 
 #### 데이터베이스
 - `GET /api/v1/database/` - 데이터베이스 목록
@@ -322,26 +499,30 @@ Vue.js 앱에서 Superset API를 호출하여 다음 기능들을 구현합니�
 - `POST /api/v1/dashboard/` - 대시보드 생성
 - `PUT /api/v1/dashboard/{id}` - 대시보드 수정
 
-#### **🆕 사용자 관리**
+#### 사용자 관리
 - `GET /api/v1/security/user/` - 사용자 목록
 - `POST /api/v1/security/user/` - 사용자 생성
 - `PUT /api/v1/security/user/{id}` - 사용자 수정
 - `GET /api/v1/security/roles/` - 역할 목록
 
-### **🔄 사용자 권한 관리 (진행 중)**
+---
 
-#### 역할(Role) 시스템
+## 🔐 사용자 권한 관리
+
+### 역할(Role) 시스템
+
 - **Admin**: 모든 권한
 - **Alpha**: 차트 및 대시보드 생성/수정 가능
 - **Gamma**: 읽기 전용, 할당된 리소스만 접근
 
-#### 구현된 기능
+### 구현된 기능
+
 - ✅ 역할별 메뉴 표시 제어
 - ✅ 차트 생성/수정 권한 체크
 - ✅ 데이터베이스 연결 권한 체크
 - ✅ 사용자 관리 UI
 
-#### **🔄 계획 중: Row-Level Security (RLS)**
+### 🔄 계획 중: Row-Level Security (RLS)
 
 사용자별로 데이터 접근 범위를 제한하는 기능입니다.
 
@@ -383,68 +564,11 @@ docker-compose logs -f mariadb
 docker exec -it superset_mariadb mysql -u superset -p
 # 패스워드: superset123
 
-### **🆕 Claude API 키 설정 (AI 챗봇 기능용)**
+# 데이터베이스 선택
+USE sample_dashboard;
 
-AI 차트 생성 챗봇 기능을 사용하려면 Claude API 키가 필요합니다.
-
-#### 1. Claude API 키 발급
-
-1. [Anthropic Console](https://console.anthropic.com)에 접속
-2. 계정 생성 또는 로그인
-3. "API Keys" 메뉴에서 새 API 키 생성
-4. 생성된 키 복사 (형식: `sk-ant-api03-...`)
-
-#### 2. 환경변수 파일 생성
-```bash
-# vue-frontend 디렉토리로 이동
-cd vue-frontend
-
-# .env.local.example을 복사하여 .env.local 생성
-cp .env.local.example .env.local
-```
-
-#### 3. API 키 설정
-
-`.env.local` 파일을 열고 다음과 같이 설정:
-```bash
-# Claude API 설정
-VUE_APP_CLAUDE_API_KEY=sk-ant-api03-your_actual_api_key_here
-VUE_APP_CLAUDE_API_URL=https://api.anthropic.com/v1/messages
-VUE_APP_CLAUDE_MODEL=claude-sonnet-4-20250514
-
-# NLP 챗봇 설정
-VUE_APP_NLP_FALLBACK_ENABLED=true
-VUE_APP_NLP_MIN_CONFIDENCE=0.7
-```
-
-#### 4. 컨테이너 재시작
-```bash
-# 프로젝트 루트 디렉토리에서
-docker-compose restart vue-frontend
-```
-
-#### ⚠️ 주의사항
-
-- **`.env.local` 파일은 절대 Git에 커밋하지 마세요!** (이미 .gitignore에 포함됨)
-- API 키는 외부에 노출되지 않도록 주의하세요
-- 키워드 기반 폴백 기능은 API 키 없이도 작동합니다
-- 프로덕션 환경에서는 환경변수를 서버 설정으로 관리하세요
-
-#### 📊 기능 비교
-
-| 기능 | Claude API | 키워드 기반 폴백 |
-|------|------------|-----------------|
-| 자연어 이해 | ⭐⭐⭐⭐⭐ 매우 우수 | ⭐⭐⭐ 보통 |
-| 복잡한 요청 처리 | ✅ 가능 | ⚠️ 제한적 |
-| 컨텍스트 이해 | ✅ 우수 | ❌ 없음 |
-| API 키 필요 | ✅ 필수 | ❌ 불필요 |
-| 비용 | 💰 유료 | 🆓 무료 |
-
-### Vue.js Frontend 개발
-```bash
-cd vue-frontend
-npm install
-npm run serve
+# 테이블 확인
+SHOW TABLES;
 ```
 
 ---
@@ -466,18 +590,24 @@ npm run serve
 
 3. **데이터베이스 연결 실패**
    - MariaDB 컨테이너가 정상 실행 중인지 확인
-   - 연결 URI가 올바른지 확인: `mysql+pymysql://superset:superset123@mariadb:3306/sample_dashboard`
+   - 연결 URI 확인: `mysql+pymysql://superset:superset123@mariadb:3306/sample_dashboard`
 
 4. **CORS 오류**
    - `superset_config.py`에서 CORS 설정 확인
    - Vue.js 앱의 프록시 설정 확인
 
-5. **차트 데이터 조회 실패** **← 🆕 추가**
+5. **차트 데이터 조회 실패**
    - Rison 파라미터 인코딩 확인
    - 데이터셋 ID와 컬럼명 정확성 확인
    - 브라우저 콘솔에서 API 응답 확인
 
-6. **컨테이너 재시작**
+6. **AI 차트 생성 실패** **← 🆕**
+   - Claude API 키 설정 확인
+   - `.env.local` 파일 존재 여부 확인
+   - 네트워크 연결 상태 확인
+   - 브라우저 콘솔에서 NLP 서비스 로그 확인
+
+7. **컨테이너 재시작**
    ```bash
    docker-compose down
    docker-compose up -d
@@ -504,8 +634,15 @@ npm run serve
 - [x] 데이터셋 구성 기능
 - [x] 차트 옵션 설정 기능 (동적 옵션 시스템)
 - [x] 대시보드 구성 기능
-- [x] 차트 프리셋 시스템 **← 🆕**
-- [x] 다중 내보내기 기능 **← 🆕**
+- [x] 차트 프리셋 시스템
+- [x] 다중 내보내기 기능
+
+### **Phase 3.5: AI 통합 ✅ 완료** **← 🆕**
+- [x] Claude API 통합
+- [x] 자연어 처리 기반 차트 생성
+- [x] 키워드 기반 폴백 시스템
+- [x] AI 챗봇 UI 컴포넌트
+- [x] 차트 설정 자동 적용
 
 ### **Phase 4: 권한 관리 시스템 🔄 진행 중**
 - [x] 사용자별 데이터 소스 접근 권한 (기본 구현)
@@ -520,6 +657,7 @@ npm run serve
 - [ ] 모바일 반응형 UI
 - [ ] 프로덕션 배포 설정
 - [ ] 성능 최적화 (캐싱, 레이지 로딩)
+- [ ] AI 기능 고도화 (다중 메트릭, 복잡한 필터)
 
 ---
 
@@ -564,6 +702,9 @@ npm run serve
 ## 🔍 주요 업데이트 이력
 
 ### **2025-01-XX** **← 🆕 최신 업데이트**
+- ✅ AI 기반 차트 생성 (Claude API) 통합 완료
+- ✅ 자연어 처리 기반 차트 빌더 구현
+- ✅ 키워드 기반 폴백 시스템 추가
 - ✅ 동적 차트 옵션 시스템 구현 완료
 - ✅ 차트 프리셋 기능 추가
 - ✅ 다중 내보내기 기능 추가 (JSON, CSV, HTML, PNG, iframe)
@@ -587,14 +728,15 @@ npm run serve
 - Windows 10 환경에서 Docker Desktop을 사용하여 개발되었습니다.
 - **Superset 버전 3.1.0**을 사용합니다. 다른 버전 사용 시 API 호환성을 확인하세요.
 - **하드코딩 금지**: 모든 설정은 환경 변수 또는 설정 파일을 통해 관리됩니다.
+- **AI 기능은 선택 사항입니다**: Claude API 키 없이도 키워드 기반으로 동작합니다.
 
 ---
 
 ## 🎯 프로젝트 목표 달성도
 
 ```
-✅ 완료: ████████████████████ 75%
-🔄 진행: ████░░░░░░░░░░░░░░░░ 20%
+✅ 완료: ████████████████████ 80%
+🔄 진행: ███░░░░░░░░░░░░░░░░░ 15%
 🔮 계획: █░░░░░░░░░░░░░░░░░░░  5%
 ```
 
@@ -603,6 +745,7 @@ npm run serve
 - ✅ 차트 빌더 5단계 프로세스
 - ✅ 동적 옵션 시스템
 - ✅ 차트 내보내기 기능
+- ✅ AI 기반 차트 생성 (Claude API)
 - 🔄 권한 관리 시스템
 - 🔮 Row-Level Security (RLS)
 - 🔮 프로덕션 배포
