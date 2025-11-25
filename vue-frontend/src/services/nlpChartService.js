@@ -129,13 +129,22 @@ class NLPChartService {
 **중요 규칙:**
 1. 반드시 사용 가능한 컬럼 중에서만 선택
 2. 숫자형 컬럼은 집계 함수와 함께 사용 (예: SUM(revenue), AVG(age))
-3. 필터는 실제 컬럼명을 사용
-4. 응답은 **오직 JSON만** 출력 (다른 텍스트 없이)
+// ⚠️ 기존 라인 삭제
+// 3. 필터는 실제 컬럼명을 사용
+// 4. 응답은 **오직 JSON만** 출력 (다른 텍스트 없이)
+// 🆕 수정된 규칙 추가
+3. **단순 개수 집계는 "count"만 사용** (COUNT(*) 사용 금지)
+   - ✅ 올바른 예: "count"
+   - ❌ 잘못된 예: "COUNT(*)", "COUNT(1)"
+4. 특정 컬럼 집계는 함수명과 컬럼명을 사용 (예: COUNT(user_id), SUM(amount))
+5. 필터는 실제 컬럼명을 사용
+6. 응답은 **오직 JSON만** 출력 (다른 텍스트 없이)
 
 **응답 형식 (JSON만):**
 {
   "chart_type": "bar",
-  "metrics": ["SUM(revenue)"],
+  // 🆕 수정: 단순 카운트는 "count", 특정 컬럼 집계는 함수(컬럼) 형식
+  "metrics": ["count"],  
   "groupby": ["team"],
   "filters": [
     {"col": "year", "op": "==", "val": "2025"}
@@ -145,6 +154,12 @@ class NLPChartService {
   "confidence": 0.95,
   "explanation": "2025년 팀별 총 수익을 막대 차트로 표시합니다."
 }
+
+// 🆕 추가 예시
+**메트릭 예시:**
+- 단순 개수: "count"
+- 특정 컬럼 집계: "SUM(revenue)", "AVG(age)", "COUNT(user_id)"
+- 여러 메트릭: ["count", "SUM(revenue)"]
 
 DO NOT OUTPUT ANYTHING OTHER THAN VALID JSON.`
 
@@ -182,6 +197,23 @@ DO NOT OUTPUT ANYTHING OTHER THAN VALID JSON.`
       
       if (!parsedResult.chart_type || !parsedResult.metrics) {
         throw new Error('Claude API 응답이 불완전합니다')
+      }
+      
+      // 🆕 메트릭 후처리: COUNT(*) → count 변환
+      if (parsedResult.metrics && Array.isArray(parsedResult.metrics)) {
+        parsedResult.metrics = parsedResult.metrics.map(metric => {
+          // COUNT(*) 또는 COUNT(1) 같은 형식을 'count'로 변환
+          if (typeof metric === 'string') {
+            const countStarMatch = metric.match(/^COUNT\(\s*\*\s*\)$/i)
+            const countOneMatch = metric.match(/^COUNT\(\s*1\s*\)$/i)
+            
+            if (countStarMatch || countOneMatch) {
+              console.log(`🔄 메트릭 변환: "${metric}" → "count"`)
+              return 'count'
+            }
+          }
+          return metric
+        })
       }
       
       console.log('✅ Claude API 파싱 완료:', parsedResult)
