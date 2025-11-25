@@ -10,7 +10,8 @@ class NLPChartService {
   constructor() {
     // 🔥 환경변수에서 Claude API 설정 로드
     this.claudeAPIKey = process.env.VUE_APP_CLAUDE_API_KEY || null
-    this.claudeAPIURL = process.env.VUE_APP_CLAUDE_API_URL || 'https://api.anthropic.com/v1/messages'
+    // 🆕 수정: 프록시 서버 URL 사용 (CORS 우회)
+    this.claudeAPIURL = process.env.VUE_APP_CLAUDE_PROXY_URL || 'http://localhost:3001/api/claude/messages'
     this.claudeModel = process.env.VUE_APP_CLAUDE_MODEL || 'claude-sonnet-4-20250514'
     this.fallbackEnabled = process.env.VUE_APP_NLP_FALLBACK_ENABLED !== 'false'
     this.minConfidence = parseFloat(process.env.VUE_APP_NLP_MIN_CONFIDENCE || '0.7')
@@ -148,6 +149,7 @@ class NLPChartService {
 DO NOT OUTPUT ANYTHING OTHER THAN VALID JSON.`
 
     try {
+      // 🆕 수정: 프록시 서버를 통해 호출 (API 키는 서버에서 관리)
       const response = await axios.post(
         this.claudeAPIURL,
         {
@@ -162,10 +164,10 @@ DO NOT OUTPUT ANYTHING OTHER THAN VALID JSON.`
         },
         {
           headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': this.claudeAPIKey,
-            'anthropic-version': '2023-06-01'
-          }
+            'Content-Type': 'application/json'
+            // 🆕 API 키와 anthropic-version은 프록시 서버에서 추가
+          },
+          timeout: 60000  // 🆕 60초 타임아웃 추가
         }
       )
       
