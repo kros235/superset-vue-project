@@ -50,32 +50,58 @@ AI 차트 생성 챗봇 UI 컴포넌트
                 <a-descriptions-item label="차트 타입">
                   <a-tag color="blue">{{ getChartTypeName(msg.chartConfig.chart_type) }}</a-tag>
                 </a-descriptions-item>
+                
+                <!-- 메트릭 - JSON 포맷 표시 (MODIFIED) -->
                 <a-descriptions-item label="메트릭">
-                  <a-tag v-for="(metric, idx) in msg.chartConfig.metrics" :key="idx" color="green">
-                    {{ metric }}
-                  </a-tag>
+                  <div class="metric-tags-wrapper">
+                    <template v-for="(metric, idx) in msg.chartConfig.metrics" :key="idx">
+                      <!-- 문자열인 경우 간단히 표시 -->
+                      <a-tag v-if="typeof metric === 'string'" color="green" class="metric-tag">
+                        {{ metric }}
+                      </a-tag>
+                      <!-- 객체인 경우 JSON 포맷으로 표시 -->
+                      <div v-else class="metric-json-container">
+                        <pre class="metric-json">{{ JSON.stringify(metric, null, 2) }}</pre>
+                      </div>
+                    </template>
+                  </div>
                 </a-descriptions-item>
+                
+                <!-- 그룹화 - flex-wrap 적용 (MODIFIED) -->
                 <a-descriptions-item label="그룹화" v-if="msg.chartConfig.groupby?.length > 0">
-                  <a-tag v-for="(col, idx) in msg.chartConfig.groupby" :key="idx" color="purple">
-                    {{ col }}
-                  </a-tag>
+                  <div class="metric-tags-wrapper">
+                    <a-tag v-for="(col, idx) in msg.chartConfig.groupby" :key="idx" color="purple">
+                      {{ col }}
+                    </a-tag>
+                  </div>
                 </a-descriptions-item>
+                
+                <!-- 🆕🆕🆕 필터 - flex-wrap 적용 (MODIFIED) 🆕🆕🆕 -->
                 <a-descriptions-item label="필터" v-if="msg.chartConfig.filters?.length > 0">
-                  <a-tag v-for="(filter, idx) in msg.chartConfig.filters" :key="idx" color="orange">
-                    {{ filter.col }} {{ filter.op }} {{ filter.val }}
-                  </a-tag>
+                  <div class="metric-tags-wrapper">
+                    <a-tag v-for="(filter, idx) in msg.chartConfig.filters" :key="idx" color="orange">
+                      {{ filter.col }} {{ filter.op }} {{ filter.val }}
+                    </a-tag>
+                  </div>
                 </a-descriptions-item>
+                
                 <a-descriptions-item label="행 제한">
                   {{ msg.chartConfig.row_limit || 1000 }}
                 </a-descriptions-item>
-                <a-descriptions-item label="신뢰도" v-if="msg.chartConfig.confidence">
+              </a-descriptions>
+              
+              <!-- 🆕🆕🆕 신뢰도 - descriptions 밖으로 분리하여 고정 표시 (MODIFIED) 🆕🆕🆕 -->
+              <div v-if="msg.chartConfig.confidence" class="confidence-section">
+                <span class="confidence-label">신뢰도</span>
+                <div class="confidence-progress">
                   <a-progress 
                     :percent="Math.round(msg.chartConfig.confidence * 100)" 
                     :strokeColor="msg.chartConfig.confidence >= 0.7 ? '#52c41a' : '#faad14'"
+                    :style="{ width: '150px' }"
                     size="small"
                   />
-                </a-descriptions-item>
-              </a-descriptions>
+                </div>
+              </div>
               
               <div class="chart-actions">
                 <a-button 
@@ -450,5 +476,71 @@ export default defineComponent({
   background: white;
   border-top: 1px solid #e8e8e8;
   border-radius: 0 0 8px 8px;
+}
+
+/* 🆕🆕🆕 메트릭 태그 래퍼 - 여러 줄 표시 (ADD) 🆕🆕🆕 */
+.metric-tags-wrapper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  max-width: 100%;
+}
+
+.metric-tag {
+  margin: 0 !important;
+  white-space: normal;
+  word-break: break-all;
+  max-width: 100%;
+  height: auto;
+  line-height: 1.5;
+}
+
+/* 신뢰도 섹션 - 고정 위치 (ADD)  */
+.confidence-section {
+  display: flex;
+  align-items: center;
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: #fafafa;
+  border: 1px solid #e8e8e8;
+  border-radius: 4px;
+}
+
+.confidence-label {
+  font-weight: 500;
+  color: #666;
+  margin-right: 16px;
+  min-width: 50px;
+}
+
+.confidence-progress {
+  flex: 0 0 auto;
+}
+
+/*  descriptions 내 태그 영역 최대 너비 제한 (ADD)  */
+.chart-config-preview :deep(.ant-descriptions-item-content) {
+  max-width: 400px;
+  word-break: break-all;
+}
+
+/* 🆕🆕🆕 메트릭 JSON 포맷 스타일 (ADD) 🆕🆕🆕 */
+.metric-json-container {
+  width: 100%;
+  margin: 4px 0;
+}
+
+.metric-json {
+  background: #f6ffed;
+  border: 1px solid #b7eb8f;
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin: 0;
+  font-size: 12px;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: #52c41a;
+  max-height: 150px;
+  overflow-y: auto;
 }
 </style>
