@@ -159,17 +159,19 @@
               </template>
             </a-button>
 
+            <!-- 🆕 :loading과 :disabled 조건 수정 -->
             <a-button 
               v-if="currentStep === steps.length - 1"
               type="primary" 
               @click="saveChart"
-              :disabled="!canSaveChart"
+              :loading="savingChart"
+              :disabled="!canSaveChart || savingChart"
               size="large"
             >
               <template #icon>
                 <SaveOutlined />
               </template>
-              차트 저장
+              {{ savingChart ? '저장 중...' : '차트 저장' }}
             </a-button>
           </a-space>
         </div>
@@ -259,6 +261,7 @@ export default defineComponent({
     const datasetMetrics = ref([])
     const chartData = ref(null)
     const previewLoading = ref(false)
+    const savingChart = ref(false)      // 🆕 저장 중 상태 (중복 저장 방지)
     const showDebugInfo = ref(process.env.NODE_ENV === 'development') // 🔥 개발 환경에서만 표시
 
     const showChatbot = ref(false)
@@ -326,7 +329,7 @@ export default defineComponent({
       }
     }
 
-    const datasetAliases = ref({})  // 🆕 추가
+    const datasetAliases = ref({})  
 
     const loadDatasetColumns = async (datasetId) => {
       columnsLoading.value = true
@@ -338,7 +341,7 @@ export default defineComponent({
         datasetColumns.value = columns || []
         console.log('로드된 컬럼:', columns)
         
-        // 🆕 추가: 저장된 Alias 로드 (localStorage + verbose_name 병합)
+        // 추가: 저장된 Alias 로드 (localStorage + verbose_name 병합)
         const localAliases = columnAliasService.getAliases(datasetId)
         
         // Superset verbose_name에서도 Alias 추출
@@ -353,7 +356,7 @@ export default defineComponent({
         
         // 병합 (localStorage가 우선)
         datasetAliases.value = { ...verboseAliases, ...localAliases }
-        console.log('🆕 로드된 Alias:', datasetAliases.value)
+        console.log('로드된 Alias:', datasetAliases.value)
         
         // 메트릭 정보 로드 (실패해도 계속 진행)
         try {
@@ -585,6 +588,14 @@ export default defineComponent({
         return
       }
 
+      // 중복 저장 방지 (ADD) 
+      if (savingChart.value) {
+        message.warning('차트 저장이 진행 중입니다. 잠시만 기다려주세요.')
+        return
+      }
+      savingChart.value = true
+      //  중복 저장 방지 끝 
+
       try {
 
         // 저장 전 최종 검증
@@ -607,11 +618,11 @@ export default defineComponent({
             ? { metric: metricsArray[0] }  // 파이 차트: 첫 번째 메트릭만 사용
             : { metrics: metricsArray }    // 다른 차트: 배열 사용
           ),
-          groupby: chartConfig.value.params?.groupby || [],         // ✅ 명시적 설정
+          groupby: chartConfig.value.params?.groupby || [],
           row_limit: chartConfig.value.params?.row_limit || 10000,
           color_scheme: chartConfig.value.params?.color_scheme || 'bnbColors',
           adhoc_filters: chartConfig.value.params?.adhoc_filters || [],
-          ...chartConfig.value.params  // ✅ 나머지 params 병합
+          ...chartConfig.value.params
         }
         
         console.log('📦 직렬화할 params:', paramsToSave)
@@ -657,18 +668,28 @@ export default defineComponent({
           datasource_id: chartConfig.value.datasource_id,
           datasource_type: 'table',
           viz_type: chartConfig.value.viz_type,
-          params: JSON.stringify(paramsToSave), // 개선된 params 사용
-          query_context: JSON.stringify(queryContext) // 🔥 추가: query_context
+          params: JSON.stringify(paramsToSave),
+          query_context: JSON.stringify(queryContext)
         }
         
         console.log('💾 차트 저장 payload:', payload)
         
         await supersetAPI.createChart(payload)
-        message.success('차트가 성공적으로 생성되었습니다!')
-        router.push('/charts')
+        
+        // 성공 메시지 및 대시보드 이동 (MODIFIED)
+        message.success({
+          content: `"${chartConfig.value.slice_name}" 차트가 성공적으로 생성되었습니다! 대시보드로 이동합니다.`,
+          duration: 3
+        })
+        router.push('/')
+        //  성공 메시지 및 대시보드 이동 끝
+        
       } catch (error) {
         console.error('차트 저장 오류:', error)
         message.error('차트 저장 중 오류가 발생했습니다.')
+      } finally {
+        // 저장 상태 초기화 (ADD) 
+        savingChart.value = false
       }
     }
 
@@ -830,7 +851,8 @@ export default defineComponent({
       saveChart,
       handlePresetSelected,
       showChatbot, 
-      handleChatbotGenerated
+      handleChatbotGenerated,
+      savingChart
     }
   }
 })
