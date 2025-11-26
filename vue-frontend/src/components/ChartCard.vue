@@ -107,6 +107,74 @@
         <InfoCircleOutlined style="color: #999" />
       </a-tooltip>
     </template>
+    <!-- 🆕 전체화면 모달 추가 -->
+    <a-modal
+      v-model:visible="fullscreenVisible"
+      :title="chart.slice_name"
+      :width="'95vw'"
+      :bodyStyle="{ height: '85vh', padding: '0', overflow: 'hidden' }"
+      :footer="null"
+      :destroyOnClose="true"
+      centered
+      @cancel="fullscreenVisible = false"
+    >
+      <div class="fullscreen-chart-container">
+        <!-- 로딩 상태 -->
+        <div v-if="loading" class="fullscreen-loading">
+          <a-spin size="large" />
+          <p>차트 데이터를 불러오는 중...</p>
+        </div>
+        
+        <!-- iframe 미리보기 -->
+        <div v-else-if="useIframePreview || !chartData" class="fullscreen-iframe">
+          <iframe
+            :src="getChartEmbedUrl()"
+            style="width: 100%; height: 100%; border: none;"
+            title="Chart Fullscreen"
+          ></iframe>
+        </div>
+        
+        <!-- 차트 데이터 테이블 -->
+        <div v-else class="fullscreen-content">
+          <a-tabs v-model:activeKey="fullscreenTab" type="card">
+            <!-- 차트 시각화 탭 -->
+            <a-tab-pane key="chart" tab="차트 시각화">
+              <div class="chart-visual-container">
+                <iframe
+                  :src="getChartEmbedUrl()"
+                  style="width: 100%; height: 70vh; border: none;"
+                  title="Chart Visual"
+                ></iframe>
+              </div>
+            </a-tab-pane>
+            
+            <!-- 데이터 테이블 탭 -->
+            <a-tab-pane key="data" tab="데이터 테이블">
+              <a-table
+                :columns="fullscreenTableColumns"
+                :dataSource="fullscreenTableData"
+                :scroll="{ y: 'calc(85vh - 120px)' }"
+                :pagination="{ pageSize: 50, showSizeChanger: true, showTotal: (total) => `총 ${total}개` }"
+                size="middle"
+                bordered
+              />
+            </a-tab-pane>
+            
+            <!-- 차트 정보 탭 -->
+            <a-tab-pane key="info" tab="차트 정보">
+              <a-descriptions :column="2" bordered>
+                <a-descriptions-item label="차트 ID">{{ chart.id }}</a-descriptions-item>
+                <a-descriptions-item label="차트 이름">{{ chart.slice_name }}</a-descriptions-item>
+                <a-descriptions-item label="차트 타입">{{ chart.viz_type }}</a-descriptions-item>
+                <a-descriptions-item label="데이터소스 ID">{{ chart.datasource_id }}</a-descriptions-item>
+                <a-descriptions-item label="생성일" :span="2">{{ chart.created_on || '-' }}</a-descriptions-item>
+                <a-descriptions-item label="설명" :span="2">{{ chart.description || '설명 없음' }}</a-descriptions-item>
+              </a-descriptions>
+            </a-tab-pane>
+          </a-tabs>
+        </div>
+      </div>
+    </a-modal>
   </a-card>
 </template>
 
@@ -175,6 +243,10 @@ export default defineComponent({
     const thumbnailBlobUrl = ref(null) // 🔥 추가: Blob URL 저장
     const thumbnailLoading = ref(false) // 🔥 추가: 썸네일 로딩 상태
     const useIframePreview = ref(false) // 🔥 추가: iframe 사용 여부
+
+    // 🆕 전체화면 관련 상태
+    const fullscreenVisible = ref(false)
+    const fullscreenTab = ref('chart')
     
     // 🔥 차트 소유자 ID를 파라미터로 전달
     const canEdit = computed(() => authService.canEditChart(props.chart.changed_by?.id))
@@ -206,6 +278,40 @@ export default defineComponent({
       }))
     })
 
+    // 🆕 전체화면 테이블 컬럼
+    const fullscreenTableColumns = computed(() => {
+      if (!props.chartData || !props.chartData.data || props.chartData.data.length === 0) {
+        return []
+      }
+      const firstRow = props.chartData.data[0]
+      return Object.keys(firstRow).map(key => ({
+        title: key,
+        dataIndex: key,
+        key,
+        ellipsis: true,
+        width: 150,
+        sorter: (a, b) => {
+          const valA = a[key]
+          const valB = b[key]
+          if (typeof valA === 'number' && typeof valB === 'number') {
+            return valA - valB
+          }
+          return String(valA).localeCompare(String(valB))
+        }
+      }))
+    })
+
+    // 🆕 전체화면 테이블 데이터
+    const fullscreenTableData = computed(() => {
+      if (!props.chartData || !props.chartData.data) {
+        return []
+      }
+      return props.chartData.data.map((row, index) => ({
+        key: index,
+        ...row
+      }))
+    })
+
     const handleAction = ({ key }) => {
       switch (key) {
       case 'edit':
@@ -215,8 +321,13 @@ export default defineComponent({
         emit('refresh', props.chart)
         break
       case 'fullscreen':
-        // 전체화면 로직 구현
-        message.info('전체화면 기능은 구현 예정입니다')
+        // 🆕 전체화면 모달 열기
+        fullscreenVisible.value = true
+        fullscreenTab.value = 'chart'
+        // 차트 데이터가 없으면 로드
+        if (!props.chartData) {
+          emit('view', props.chart.id)
+        }
         break
       case 'delete':
         emit('delete', props.chart)
@@ -391,16 +502,22 @@ export default defineComponent({
       tableColumns,
       tableData,
       handleAction,
-      getChartEmbedUrl,    // 🔥 추가
-      handleIframeLoad,     // 🔥 추가
-      getChartThumbnailUrl,  // 🔥 추가
-      handleImageError,      // 🔥 추가
-      openInSuperset,         // 🔥 추가
+      getChartEmbedUrl,    
+      handleIframeLoad,     
+      getChartThumbnailUrl,
+      handleImageError,
+      openInSuperset,  
       useFallbackThumbnail,
-      thumbnailBlobUrl, // 🔥 추가
-      thumbnailLoading,  // 🔥 추가
-      cleanupBlobUrl,     // 🔥 추가
-      useIframePreview // 🔥 추가
+      thumbnailBlobUrl, 
+      thumbnailLoading,
+      cleanupBlobUrl,   
+      useIframePreview,
+
+      // 🆕 전체화면 관련
+      fullscreenVisible,
+      fullscreenTab,
+      fullscreenTableColumns,
+      fullscreenTableData
     }
   },
   // 🔥 컴포넌트 언마운트 시 정리
@@ -418,5 +535,49 @@ export default defineComponent({
 
 .ant-table-tbody > tr > td {
   padding: 4px 8px;
+}
+
+/* 🆕 전체화면 모달 스타일 */
+.fullscreen-chart-container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.fullscreen-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #666;
+}
+
+.fullscreen-loading p {
+  margin-top: 16px;
+}
+
+.fullscreen-iframe {
+  height: 100%;
+}
+
+.fullscreen-content {
+  height: 100%;
+  padding: 16px;
+}
+
+.chart-visual-container {
+  background: #fafafa;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* 전체화면 모달 내 탭 스타일 */
+.fullscreen-content :deep(.ant-tabs-content) {
+  height: calc(85vh - 100px);
+}
+
+.fullscreen-content :deep(.ant-table-wrapper) {
+  height: 100%;
 }
 </style>

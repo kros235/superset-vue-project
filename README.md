@@ -970,7 +970,7 @@ class SupersetAPI {
 ### **Phase 4: 권한 관리 시스템 🔄 진행 중**
 - [x] 역할별 UI 제어
 - [x] 사용자 관리 UI
-- [ ] Row-Level Security (RLS) 구현
+- [x] Row-Level Security (RLS) 구현
 
 ### **Phase 5: 고도화 🔮 계획**
 - [ ] 실시간 데이터 업데이트
@@ -978,6 +978,60 @@ class SupersetAPI {
 - [ ] 프로덕션 배포 설정
 
 ---
+
+---
+
+#### **2. ★ Vue.js에서 RLS 관리 UI 추가 권장**
+
+**현재 상태:**
+- RLS 필터는 **Superset Web UI에서만 설정 가능**
+- Vue.js 프론트엔드에서는 RLS 관리 기능이 없음
+
+**추가 권장 (선택사항):**
+Superset API를 통한 RLS 관리 기능을 Vue.js에서 제공하려면:
+```
+파일 위치: vue-frontend/src/components/
+추가 파일: RLSManager.vue (Row-Level Security 관리 컴포넌트)
+
+파일 위치: vue-frontend/src/services/
+추가 파일: rlsService.js (RLS API 호출 서비스)
+```
+
+**관련 Superset API:**
+```
+GET    /api/v1/rowlevelsecurity/
+POST   /api/v1/rowlevelsecurity/
+PUT    /api/v1/rowlevelsecurity/{id}
+DELETE /api/v1/rowlevelsecurity/{id}
+```
+
+---
+
+#### **3. ★ 데이터베이스 초기화 스크립트 파일 정리 권장**
+
+**현재 상태:**
+프로젝트 지식에서 두 개의 초기화 스크립트가 확인됨:
+- `database/init/01-create-database.sql` (권한 분리용)
+- `database/init/01-create-sample-database.sql` (샘플 데이터용)
+
+**권장 사항:**
+파일명이 충돌할 수 있으므로 다음과 같이 **순서 정리 필요**:
+```
+database/init/
+├── 01-create-database.sql          ← 테이블 생성 (현재 유지)
+├── 02-insert-sample-data.sql       ← 샘플 데이터 INSERT (분리 권장)
+└── 03-create-views-indexes.sql     ← 뷰 및 인덱스 생성 (분리 권장)
+```
+
+---
+
+#### **4. ★ 환경변수 설정 파일 확인**
+
+**확인 필요:**
+```
+vue-frontend/.env.local 파일에서:
+- VUE_APP_CLAUDE_API_KEY 설정 여부
+- VUE_APP_NLP_FALLBACK_ENABLED 설정 여부
 
 ## ⚠️ 주의사항
 
