@@ -453,6 +453,7 @@ export default defineComponent({
       const defaultParams = {
         table: { metrics: ['count'], groupby: [], row_limit: 1000 },
         bar: { metrics: ['count'], groupby: [], row_limit: 1000, color_scheme: 'bnbColors' },
+        dist_bar: { metrics: ['count'], groupby: [], row_limit: 1000, color_scheme: 'bnbColors' },
         line: { metrics: ['count'], groupby: [], row_limit: 1000, color_scheme: 'bnbColors' },
         pie: { metrics: ['count'], groupby: [], row_limit: 1000, color_scheme: 'bnbColors' },
         area: { metrics: ['count'], groupby: [], row_limit: 1000, color_scheme: 'bnbColors' },

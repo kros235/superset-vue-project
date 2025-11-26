@@ -112,54 +112,41 @@ class NLPChartService {
       alias: col.alias || null  // 🆕 추가
     }))
     
-    const prompt = `당신은 데이터 분석 전문가입니다. 사용자의 자연어 요청을 분석하여 차트 생성 파라미터를 추출해주세요.
-
-**데이터셋 정보:**
-- 데이터셋: ${dataset.table_name}
-- 데이터베이스: ${dataset.database?.database_name || 'Unknown'}
-- 사용 가능한 컬럼: ${JSON.stringify(columnSummary, null, 2)}
-
-**🆕 컬럼 별칭 안내:**
-사용자가 "팀별", "수익" 등의 한글 표현을 사용하면, 위 컬럼 목록에서 alias 또는 description이 일치하는 컬럼을 매칭하세요.
-예: "팀별" → team 컬럼, "수익" → revenue 컬럼
-
-**사용자 요청:**
-"${userMessage}"
+    const prompt = `당신은 데이터 분석 전문가입니다. 다음 요청을 분석하여 차트 설정을 JSON으로 반환하세요.
 
 **중요 규칙:**
-1. 반드시 사용 가능한 컬럼 중에서만 선택
-2. 숫자형 컬럼은 집계 함수와 함께 사용 (예: SUM(revenue), AVG(age))
-// ⚠️ 기존 라인 삭제
-// 3. 필터는 실제 컬럼명을 사용
-// 4. 응답은 **오직 JSON만** 출력 (다른 텍스트 없이)
-// 🆕 수정된 규칙 추가
-3. **단순 개수 집계는 "count"만 사용** (COUNT(*) 사용 금지)
-   - ✅ 올바른 예: "count"
-   - ❌ 잘못된 예: "COUNT(*)", "COUNT(1)"
-4. 특정 컬럼 집계는 함수명과 컬럼명을 사용 (예: COUNT(user_id), SUM(amount))
-5. 필터는 실제 컬럼명을 사용
-6. 응답은 **오직 JSON만** 출력 (다른 텍스트 없이)
+1. 사용자 요청: "${userMessage}"
+2. 데이터셋: ${dataset.table_name}
+3. **컬럼 정보:**
+${JSON.stringify(columnSummary, null, 2)}
+
+4. **✅ CRITICAL: groupby와 metrics는 반드시 실제 column의 'name' 필드 값을 사용하세요**
+   - ❌ 잘못된 예: "조직코드", "직위", "orgCode", "position" (alias나 description 사용)
+   - ✅ 올바른 예: "tpBm3Nm", "positionCode" (실제 name 필드의 값)
+   - 사용자가 "조직코드별"이라고 하면, 위 컬럼 정보에서 description이 "조직코드"인 컬럼의 'name' 필드를 사용
+
+5. **메트릭 형식:**
+   - 단순 개수: "count"만 사용
+   - 컬럼 집계: "SUM(실제컬럼명)", "AVG(실제컬럼명)" 형식 사용
+   - ❌ 잘못된 예: "SUM(수주금액)", "COUNT(*)"
+   - ✅ 올바른 예: "count", "SUM(mngContractAmount)"
+
+6. **차트 타입 선택:**
+   - 시계열 데이터: "line" 사용
+   - 카테고리별 비교: "dist_bar" 사용 (bar 대신)
+   - 비율: "pie" 사용
 
 **응답 형식 (JSON만):**
 {
-  "chart_type": "bar",
-  // 🆕 수정: 단순 카운트는 "count", 특정 컬럼 집계는 함수(컬럼) 형식
-  "metrics": ["count"],  
-  "groupby": ["team"],
-  "filters": [
-    {"col": "year", "op": "==", "val": "2025"}
-  ],
+  "chart_type": "dist_bar",
+  "metrics": ["SUM(mngContractAmount)"],
+  "groupby": ["tpBm3Nm"],
+  "filters": [],
   "row_limit": 1000,
   "time_range": "No filter",
   "confidence": 0.95,
-  "explanation": "2025년 팀별 총 수익을 막대 차트로 표시합니다."
+  "explanation": "각 본부별 수주금액 합계를 막대그래프로 표시합니다."
 }
-
-// 🆕 추가 예시
-**메트릭 예시:**
-- 단순 개수: "count"
-- 특정 컬럼 집계: "SUM(revenue)", "AVG(age)", "COUNT(user_id)"
-- 여러 메트릭: ["count", "SUM(revenue)"]
 
 DO NOT OUTPUT ANYTHING OTHER THAN VALID JSON.`
 
@@ -199,23 +186,199 @@ DO NOT OUTPUT ANYTHING OTHER THAN VALID JSON.`
         throw new Error('Claude API 응답이 불완전합니다')
       }
       
-      // 🆕 메트릭 후처리: COUNT(*) → count 변환
       if (parsedResult.metrics && Array.isArray(parsedResult.metrics)) {
         parsedResult.metrics = parsedResult.metrics.map(metric => {
-          // COUNT(*) 또는 COUNT(1) 같은 형식을 'count'로 변환
+          // 이미 객체 형식이면 그대로 반환
+          if (typeof metric === 'object' && metric !== null) {
+            return metric
+          }
+      
           if (typeof metric === 'string') {
+            // ✅ 🆕 수정: COUNT(*) 또는 count → 단순 문자열 "count" 반환
             const countStarMatch = metric.match(/^COUNT\(\s*\*\s*\)$/i)
-            const countOneMatch = metric.match(/^COUNT\(\s*1\s*\)$/i)
+            if (countStarMatch || metric.toLowerCase() === 'count') {
+              console.log(`🔄 메트릭 변환: "${metric}" → "count" (문자열)`)
+              return 'count'  // ✅ Adhoc 객체 대신 단순 문자열 반환
+            }
+
+            // ✅ 🆕 추가: sum__컬럼명 형식 → Adhoc Metric 객체 변환
+            const adhocMetricMatch = metric.match(/^(sum|avg|max|min|count_distinct)__(.+)$/i)
+            if (adhocMetricMatch) {
+              const aggregateFunc = adhocMetricMatch[1].toUpperCase()
+              const columnName = adhocMetricMatch[2]
+              
+              const column = columns.find(col => 
+                col.column_name === columnName || 
+                col.verbose_name === columnName
+              )
+              
+              console.log(`✅ adhoc metric 형식 감지: ${metric} → Adhoc Metric 객체 변환`)
+              
+              return {
+                expressionType: 'SIMPLE',
+                column: {
+                  column_name: columnName,
+                  type: column?.type || (aggregateFunc === 'COUNT_DISTINCT' ? 'STRING' : 'DOUBLE')
+                },
+                aggregate: aggregateFunc,
+                label: `${aggregateFunc}(${columnName})`,
+                optionName: `metric_${aggregateFunc.toLowerCase()}_${columnName}_${Date.now()}`
+              }
+            }
             
-            if (countStarMatch || countOneMatch) {
-              console.log(`🔄 메트릭 변환: "${metric}" → "count"`)
-              return 'count'
+            // SUM(컬럼명) → Adhoc Metric 객체
+            const sumMatch = metric.match(/^SUM\(([^)]+)\)$/i)
+            if (sumMatch) {
+              const columnName = sumMatch[1].trim()
+              const column = columns.find(col => 
+                col.column_name === columnName || 
+                col.verbose_name === columnName
+              )
+              
+              return {
+                expressionType: 'SIMPLE',
+                column: {
+                  column_name: columnName,
+                  type: column?.type || 'DOUBLE'
+                },
+                aggregate: 'SUM',
+                label: `SUM(${columnName})`,
+                optionName: `metric_sum_${columnName}_${Date.now()}`
+              }
+            }
+            
+            // AVG(컬럼명) → Adhoc Metric 객체
+            const avgMatch = metric.match(/^AVG\(([^)]+)\)$/i)
+            if (avgMatch) {
+              const columnName = avgMatch[1].trim()
+              const column = columns.find(col => 
+                col.column_name === columnName || 
+                col.verbose_name === columnName
+              )
+              
+              return {
+                expressionType: 'SIMPLE',
+                column: {
+                  column_name: columnName,
+                  type: column?.type || 'DOUBLE'
+                },
+                aggregate: 'AVG',
+                label: `AVG(${columnName})`,
+                optionName: `metric_avg_${columnName}_${Date.now()}`
+              }
+            }
+            
+            // MAX(컬럼명) → Adhoc Metric 객체
+            const maxMatch = metric.match(/^MAX\(([^)]+)\)$/i)
+            if (maxMatch) {
+              const columnName = maxMatch[1].trim()
+              const column = columns.find(col => 
+                col.column_name === columnName || 
+                col.verbose_name === columnName
+              )
+              
+              return {
+                expressionType: 'SIMPLE',
+                column: {
+                  column_name: columnName,
+                  type: column?.type || 'DOUBLE'
+                },
+                aggregate: 'MAX',
+                label: `MAX(${columnName})`,
+                optionName: `metric_max_${columnName}_${Date.now()}`
+              }
+            }
+            
+            // MIN(컬럼명) → Adhoc Metric 객체
+            const minMatch = metric.match(/^MIN\(([^)]+)\)$/i)
+            if (minMatch) {
+              const columnName = minMatch[1].trim()
+              const column = columns.find(col => 
+                col.column_name === columnName || 
+                col.verbose_name === columnName
+              )
+              
+              return {
+                expressionType: 'SIMPLE',
+                column: {
+                  column_name: columnName,
+                  type: column?.type || 'DOUBLE'
+                },
+                aggregate: 'MIN',
+                label: `MIN(${columnName})`,
+                optionName: `metric_min_${columnName}_${Date.now()}`
+              }
+            }
+      
+            // COUNT_DISTINCT(컬럼명) → Adhoc Metric 객체
+            const countDistinctMatch = metric.match(/^COUNT_DISTINCT\(([^)]+)\)$/i)
+            if (countDistinctMatch) {
+              const columnName = countDistinctMatch[1].trim()
+              const column = columns.find(col => 
+                col.column_name === columnName || 
+                col.verbose_name === columnName
+              )
+        
+              return {
+                expressionType: 'SIMPLE',
+                column: {
+                  column_name: columnName,
+                  type: column?.type || 'STRING'
+                },
+                aggregate: 'COUNT_DISTINCT',
+                label: `COUNT_DISTINCT(${columnName})`,
+                optionName: `metric_count_distinct_${columnName}_${Date.now()}`
+              }
             }
           }
+    
+          // 알 수 없는 형식은 그대로 반환
           return metric
         })
       }
+
+      console.log('✅ Adhoc Metric 변환 완료:', parsedResult.metrics)
       
+      if (parsedResult.groupby && Array.isArray(parsedResult.groupby)) {
+        parsedResult.groupby = parsedResult.groupby.map(groupItem => {
+          // 이미 실제 컬럼명이면 그대로 반환
+          const directMatch = columns.find(col => col.column_name === groupItem)
+          if (directMatch) {
+            console.log(`✅ groupby 컬럼명 확인: ${groupItem} (이미 실제 컬럼명)`)
+            return groupItem
+          }
+          
+          // alias 또는 verbose_name으로 컬럼 찾기
+          const aliasMatch = columns.find(col => 
+            (col.alias && col.alias === groupItem) ||
+            (col.verbose_name && col.verbose_name === groupItem)
+          )
+          
+          if (aliasMatch) {
+            console.log(`🔄 groupby 변환: "${groupItem}" → "${aliasMatch.column_name}"`)
+            return aliasMatch.column_name
+          }
+          
+          // 부분 일치 시도 (한글 포함)
+          const partialMatch = columns.find(col =>
+            (col.alias && col.alias.includes(groupItem)) ||
+            (col.verbose_name && col.verbose_name.includes(groupItem)) ||
+            (groupItem.includes(col.alias)) ||
+            (groupItem.includes(col.verbose_name))
+          )
+          
+          if (partialMatch) {
+            console.log(`🔄 groupby 부분 일치 변환: "${groupItem}" → "${partialMatch.column_name}"`)
+            return partialMatch.column_name
+          }
+          
+          console.warn(`⚠️ groupby 컬럼을 찾을 수 없음: "${groupItem}" - 원본 사용`)
+          return groupItem
+        })
+      }
+      
+      console.log('✅ groupby 변환 완료:', parsedResult.groupby)
+
       console.log('✅ Claude API 파싱 완료:', parsedResult)
       return parsedResult
       

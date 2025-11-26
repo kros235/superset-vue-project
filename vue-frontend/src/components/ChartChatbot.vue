@@ -176,7 +176,12 @@ export default defineComponent({
     datasetColumns: {
       type: Array,
       required: true
-    }
+    },
+      // ✅ 🆕 추가: columnAliases props
+      columnAliases: {
+        type: Object,
+        default: () => ({})
+      }
   },
   emits: ['chart-generated', 'close'],
   setup(props, { emit }) {
@@ -237,7 +242,8 @@ export default defineComponent({
         const chartConfig = await nlpChartService.parseChartRequest(
           userMessage,
           props.selectedDataset,
-          props.datasetColumns
+          props.datasetColumns,
+          props.columnAliases  // ✅ 🆕 추가: columnAliases 전달
         )
         
         console.log('✅ NLP 분석 완료:', chartConfig)
