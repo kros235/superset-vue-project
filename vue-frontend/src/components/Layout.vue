@@ -20,7 +20,7 @@
         background: '#001529'
       }">
         <div v-if="!collapsed" :style="{ color: '#fff', fontSize: '16px', fontWeight: 'bold' }">
-          Superset Dashboard
+          Bizforce Dashboard
         </div>
         <div v-else :style="{ color: '#fff', fontSize: '20px' }">
           S

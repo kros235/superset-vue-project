@@ -743,6 +743,41 @@ class SupersetAPI {
     }
   }
 
+  // ============================================================
+  // 🔥 [추가] 데이터셋 상세 정보 조회 (getDatasetDetail)
+  // ============================================================
+  async getDatasetDetail(datasetId) {
+    try {
+      console.log(`데이터셋 상세 정보 조회: ${datasetId}`)
+      const response = await this.api.get(`/api/v1/dataset/${datasetId}`)
+      
+      // result 객체를 직접 반환 (기존 getDataset과 다르게 result 내부 데이터 반환)
+      const result = response.data.result
+      console.log('데이터셋 상세 정보:', result)
+      return result
+    } catch (error) {
+      console.error('데이터셋 상세 정보 조회 오류:', error)
+      throw error
+    }
+  }
+
+  // ============================================================
+  // 🔥 [추가] 데이터셋 업데이트 (updateDataset)
+  // ============================================================
+  async updateDataset(datasetId, updateData) {
+    try {
+      console.log(`데이터셋 업데이트: ${datasetId}`)
+      console.log('업데이트 데이터:', updateData)
+      
+      const response = await this.api.put(`/api/v1/dataset/${datasetId}`, updateData)
+      console.log('데이터셋 업데이트 성공:', response.data)
+      return response.data
+    } catch (error) {
+      console.error('데이터셋 업데이트 오류:', error)
+      throw error
+    }
+  }
+
   // 🔥 데이터셋 삭제
   async deleteDataset(datasetId) {
     try {

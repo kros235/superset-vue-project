@@ -2,7 +2,7 @@
   <div class="login-container">
     <div class="login-box">
       <div class="login-header">
-        <h2>Superset Dashboard</h2>
+        <h2>Bizforce Dashboard</h2>
         <p>Apache Superset과 연동된 Vue.js 대시보드</p>
       </div>
 

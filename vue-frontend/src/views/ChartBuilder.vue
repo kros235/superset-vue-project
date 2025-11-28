@@ -469,20 +469,77 @@ export default defineComponent({
       }
     }
 
+    // 🆕 무한 루프 방지를 위한 플래그 및 디바운스 타이머
+    let isUpdating = false
+    let updateDebounceTimer = null
+
     const updateChartConfig = (updates) => {
-      if (typeof updates === 'object') {
-        if (updates.params) {
-          chartConfig.value.params = {
-            ...chartConfig.value.params,
-            ...updates.params
-          }
-          delete updates.params // params는 이미 처리했으므로 제거
-        }
-        
-        // 나머지 필드 병합
-        Object.assign(chartConfig.value, updates)
+      // 🆕 무한 루프 방지: 이미 업데이트 중이면 무시
+      if (isUpdating) {
+        return
       }
-      console.log('차트 설정 업데이트:', chartConfig.value)
+
+      if (typeof updates !== 'object' || updates === null) {
+        return
+      }
+
+      // 🆕 디바운스: 연속 호출 방지 (특히 필터 입력 시)
+      if (updateDebounceTimer) {
+        clearTimeout(updateDebounceTimer)
+      }
+
+      updateDebounceTimer = setTimeout(() => {
+        isUpdating = true
+
+        try {
+          // 🆕 params 업데이트인지 확인
+          if (updates.params) {
+            // 🆕 adhoc_filters 특별 처리: 직접 할당으로 반응성 최소화
+            if (updates.params.adhoc_filters !== undefined) {
+              // adhoc_filters만 업데이트하는 경우
+              const newFilters = Array.isArray(updates.params.adhoc_filters) 
+                ? updates.params.adhoc_filters 
+                : []
+              
+              // 🆕 기존 params 객체에 직접 할당 (새 객체 생성 안 함)
+              if (!chartConfig.value.params) {
+                chartConfig.value.params = {}
+              }
+              chartConfig.value.params.adhoc_filters = newFilters
+              
+              // adhoc_filters 외 다른 params도 있으면 병합
+              const { adhoc_filters, ...otherParams } = updates.params
+              if (Object.keys(otherParams).length > 0) {
+                Object.assign(chartConfig.value.params, otherParams)
+              }
+            } else {
+              // 🆕 adhoc_filters가 없는 params 업데이트: 기존 adhoc_filters 보존
+              const existingFilters = chartConfig.value.params?.adhoc_filters || []
+              Object.assign(chartConfig.value.params, updates.params)
+              chartConfig.value.params.adhoc_filters = existingFilters
+            }
+            
+            // params 외 다른 필드도 있으면 업데이트
+            const { params, ...otherUpdates } = updates
+            if (Object.keys(otherUpdates).length > 0) {
+              Object.assign(chartConfig.value, otherUpdates)
+            }
+          } else {
+            // 🆕 params 없는 업데이트: 직접 할당
+            Object.assign(chartConfig.value, updates)
+          }
+
+          // 🆕 디버깅 로그
+          console.log('차트 설정 업데이트:', chartConfig.value)
+          console.log('🔍 업데이트 후 adhoc_filters:', chartConfig.value.params?.adhoc_filters)
+
+        } finally {
+          // 🆕 다음 프레임에서 플래그 해제
+          requestAnimationFrame(() => {
+            isUpdating = false
+          })
+        }
+      }, 10)  // 🆕 10ms 디바운스
     }
 
     const previewChart = async () => {
@@ -609,25 +666,47 @@ export default defineComponent({
         const isPieChart = chartConfig.value.viz_type === 'pie'
         const metricsArray = chartConfig.value.params?.metrics || ['count']
 
-        // params 객체를 명시적으로 복사하여 직렬화
-        const paramsToSave = {
-          datasource: `${chartConfig.value.datasource_id}__table`,
-          viz_type: chartConfig.value.viz_type,
-          // 파이 차트는 metric (단수), 다른 차트는 metrics (복수)
-          ...(isPieChart 
-            ? { metric: metricsArray[0] }  // 파이 차트: 첫 번째 메트릭만 사용
-            : { metrics: metricsArray }    // 다른 차트: 배열 사용
-          ),
-          groupby: chartConfig.value.params?.groupby || [],
-          row_limit: chartConfig.value.params?.row_limit || 10000,
-          color_scheme: chartConfig.value.params?.color_scheme || 'bnbColors',
-          adhoc_filters: chartConfig.value.params?.adhoc_filters || [],
-          ...chartConfig.value.params
-        }
+        // 🆕 adhoc_filters 명시적 추출 및 검증 (Deep Copy로 안전하게)
+        const rawAdhocFilters = chartConfig.value.params?.adhoc_filters
+        const adhocFilters = rawAdhocFilters && Array.isArray(rawAdhocFilters) && rawAdhocFilters.length > 0
+          ? JSON.parse(JSON.stringify(rawAdhocFilters))  // 🆕 Deep Copy
+          : []
+        console.log('🔍 저장 전 adhoc_filters (raw):', rawAdhocFilters)
+        console.log('🔍 저장 전 adhoc_filters (copy):', adhocFilters)
+        console.log('🔍 adhoc_filters 개수:', adhocFilters.length)
+
+       const paramsToSave = {
+         datasource: `${chartConfig.value.datasource_id}__table`,
+         viz_type: chartConfig.value.viz_type,
+         ...(isPieChart 
+           ? { metric: metricsArray[0] }
+           : { metrics: metricsArray }
+         ),
+         groupby: chartConfig.value.params?.groupby || [],
+         row_limit: chartConfig.value.params?.row_limit || 10000,
+         color_scheme: chartConfig.value.params?.color_scheme || 'bnbColors',
+         adhoc_filters: adhocFilters,  // 🆕 명시적 변수 사용
+         ...chartConfig.value.params,
+         adhoc_filters: adhocFilters   // 🆕 스프레드 연산자 이후 다시 덮어쓰기 (확실하게)
+       }
         
         console.log('📦 직렬화할 params:', paramsToSave)
         
-        // 🔥 query_context 생성 - Superset이 차트를 제대로 저장하기 위해 필수
+        // 🆕 adhoc_filters를 Superset 쿼리 형식으로 변환
+        const queryFilters = adhocFilters.map(f => ({
+          col: f.subject,
+          op: f.operator,
+          val: f.comparator
+        }))
+        console.log('🔍 쿼리용 필터 변환:', queryFilters)
+        
+        const whereConditions = adhocFilters.map(f => {
+          const value = typeof f.comparator === 'string' ? `'${f.comparator}'` : f.comparator
+          return `${f.subject} ${f.operator} ${value}`
+        }).join(' AND ')
+
+        console.log('🔍 생성된 WHERE 조건:', whereConditions)
+
         const queryContext = {
           datasource: {
             id: chartConfig.value.datasource_id,
@@ -635,10 +714,10 @@ export default defineComponent({
           },
           force: false,
           queries: [{
-            filters: chartConfig.value.params?.adhoc_filters || [],
+            filters: queryFilters,
             extras: {
               having: '',
-              where: ''
+              where: whereConditions  // 🆕 WHERE 조건 직접 추가
             },
             applied_time_extras: {},
             columns: chartConfig.value.params?.groupby || [],
@@ -771,22 +850,75 @@ export default defineComponent({
       }
     }
 
-    const handleChatbotGenerated = async (chatbotConfig) => {
-      console.log('🤖 챗봇에서 생성된 차트 설정:', chatbotConfig)
-      
-      try {
-        // 1️⃣ 차트 타입 설정
-        chartConfig.value.viz_type = chatbotConfig.chart_type
-        
-        // 2️⃣ 파라미터 설정
-        chartConfig.value.params = {
-          metrics: chatbotConfig.metrics || ['count'],
-          groupby: chatbotConfig.groupby || [],
-          adhoc_filters: chatbotConfig.filters || [],
-          row_limit: chatbotConfig.row_limit || 1000,
-          time_range: chatbotConfig.time_range || 'No filter',
-          color_scheme: 'bnbColors'
+    // 추가: filters를 adhoc_filters 형식으로 변환하는 함수
+    const convertFiltersToAdhoc = (filters) => {
+      if (!filters || !Array.isArray(filters)) return []
+  
+      return filters.map((filter, index) => {
+        // 🆕 Superset dist_bar 차트가 기대하는 정확한 형식
+        const adhocFilter = {
+          expressionType: 'SIMPLE',
+          subject: filter.col,
+          operator: filter.op === '==' ? '==' : filter.op,
+          comparator: filter.val,
+          clause: 'WHERE',
+          sqlExpression: null,
+          isExtra: false,
+          isNew: false,
+          filterOptionName: `filter_${filter.col}_${Date.now()}_${index}`
         }
+        
+        console.log('🔍 변환된 개별 필터:', adhocFilter)
+        return adhocFilter
+      })
+    }
+
+     const handleChatbotGenerated = async (chatbotConfig) => {
+       console.log('🤖 챗봇에서 생성된 차트 설정:', chatbotConfig)
+       
+       try {
+         // 1️⃣ 차트 타입 설정
+         chartConfig.value.viz_type = chatbotConfig.chart_type
+         
+         // 2️⃣ 파라미터 설정
+         let finalGroupby = chatbotConfig.groupby || []
+         if (chatbotConfig.time_grain_sqla && chatbotConfig.granularity_sqla) {
+           if (finalGroupby.length === 0) {
+             finalGroupby = [chatbotConfig.granularity_sqla]
+             console.log('🆕 Time Grain 사용으로 groupby에 날짜 컬럼 자동 추가:', chatbotConfig.granularity_sqla)
+           }
+              }
+     
+         // 🆕 adhoc_filters를 먼저 변환하여 별도 변수에 저장
+         const convertedAdhocFilters = convertFiltersToAdhoc(chatbotConfig.filters)
+         console.log('🔍 변환된 adhoc_filters:', convertedAdhocFilters)
+     
+         // 🆕 params 객체를 명시적으로 생성
+         const newParams = {
+           metrics: chatbotConfig.metrics || ['count'],
+           groupby: finalGroupby,
+           adhoc_filters: convertedAdhocFilters,  // 🆕 변환된 필터 사용
+           row_limit: chatbotConfig.row_limit || 1000,
+           time_range: chatbotConfig.time_range || 'No filter',
+           color_scheme: 'bnbColors',
+           granularity_sqla: chatbotConfig.granularity_sqla || null,
+           time_grain_sqla: chatbotConfig.time_grain_sqla || null,
+           x_axis: chatbotConfig.x_axis || null
+         }
+         
+         // 🆕 chartConfig 전체를 한 번에 업데이트 (반응성 유지)
+         chartConfig.value = {
+           ...chartConfig.value,
+           viz_type: chatbotConfig.chart_type,
+           slice_name: `AI 생성 차트 - ${new Date().toLocaleString()}`,
+           description: 'AI 챗봇으로 생성된 차트입니다.',
+           params: newParams
+         }
+         
+         // 🆕 디버깅: 최종 확인
+         console.log('🔍 최종 chartConfig.params.adhoc_filters:', chartConfig.value.params.adhoc_filters)
+         console.log('🔍 최종 groupby:', chartConfig.value.params.groupby)
+         console.log('✅ 챗봇 설정 적용 완료:', chartConfig.value)
         
         // 3️⃣ 차트 이름 자동 생성
         const chartTypeName = {
